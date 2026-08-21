@@ -1,0 +1,199 @@
+/**
+ * UI translations. English is the source of truth; Swedish must match its
+ * shape (enforced by the `Messages` type). Dynamic strings are functions.
+ * Only interface chrome is translated — the finance documents keep their
+ * original language.
+ */
+
+export const LANGS = ["en", "sv"] as const;
+export type Lang = (typeof LANGS)[number];
+export const DEFAULT_LANG: Lang = "en";
+export const LANG_COOKIE = "lang";
+
+const en = {
+  common: {
+    brand: "Finance Platform",
+    tagline: "Monthly close · Burman Enterprise",
+    footer: "Totals are computed in code and shown with their work, never estimated.",
+    sections: "Sections",
+    startOver: "Start over",
+    chooseDifferentFile: "Choose a different file",
+    tryAnother: "Try another file",
+    language: "Language",
+  },
+  tabs: { income: "Income", ads: "Ads invoices" },
+  income: {
+    title: "Income summary",
+    desc: "Upload the WorldFirst income export and get the correct monthly total, then a clean workbook with the total written in.",
+    dropTitle: "Drop the WorldFirst export here",
+    dropOr: "or click to choose the .xlsx file you downloaded",
+    dropHint: "We read the “Amount entered” column and total it for you",
+    exportNote:
+      "Export from WorldFirst filtered to TikTok Inc. income, choose XLS detail. The amounts come in as text, so Excel’s SUM shows 0. This reads them correctly and gives you the real total.",
+    reading: (name: string) => `Reading ${name}…`,
+    readingSub: "Coercing the text amounts to numbers and totalling column D.",
+    errTitle: "We couldn’t read that file",
+    totalIncome: "Total income",
+    countedFrom: (n: number, col: string, header: string) =>
+      `${n} rows counted from column ${col} (“${header}”), read from the text values Excel could not add.`,
+    everyRowCounted: "Every row counted",
+    needLook: (n: number) => `${n} need a look`,
+    countedRows: "Counted rows",
+    colRow: "Row",
+    colDescription: "Description",
+    colAmount: "Amount entered",
+    total: "Total",
+    otherCurrencies: "Other currencies",
+    rowsLabel: "rows",
+    notCounted: (n: number) => `${n} row${n > 1 ? "s" : ""} not counted`,
+    rowN: (n: number) => `row ${n}`,
+    reasonNoAmount: "No amount in this row",
+    reasonNotNumber: "Amount is not a number",
+    negativeNote: (n: number) =>
+      `${n} row${n > 1 ? "s are" : " is"} negative (a refund or reversal) and ${n > 1 ? "were" : "was"} subtracted from the total.`,
+    exportBtn: "Export summarized .xlsx",
+    exporting: "Preparing…",
+    toastExported: "Summarized workbook downloaded",
+  },
+  ads: {
+    title: "Ads invoices",
+    desc: "Upload the WorldFirst statement and the TikTok invoice PDFs. The platform matches them, flags anything missing on either side, and renames each invoice ready to file.",
+    statementLabel: "WorldFirst statement",
+    statementHint: "The ads-payment statement PDF (one file)",
+    invoicesLabel: "Invoice PDFs",
+    invoicesHint: "Drop the TikTok invoices (one or many)",
+    clear: "Clear",
+    reconcile: (n: number) => (n > 0 ? `Reconcile ${n} invoice${n > 1 ? "s" : ""}` : "Reconcile"),
+    addBoth: "Add the statement and at least one invoice.",
+    workingTitle: "Reading the statement and invoices…",
+    workingSub: "Extracting each total and matching by amount and date.",
+    reconciliation: "Reconciliation",
+    matched: "matched",
+    paymentsNoInvoiceShort: "payments w/o invoice",
+    invoicesNoPaymentShort: "invoices w/o payment",
+    fullyReconciled: "Fully reconciled",
+    needsLook: "Needs a look",
+    invoicesTotal: (n: number) => `Invoices total (${n})`,
+    statementTotal: "Statement total",
+    difference: "Difference",
+    bMatched: "Matched",
+    bPaymentsNoInvoice: "Payments with no invoice",
+    bInvoicesNoPayment: "Invoices with no payment",
+    bUnreadable: "Could not read",
+    paidOn: (d: string) => `paid ${d}`,
+    invoiceMissing: "invoice missing",
+    noMatchingPayment: "no matching payment",
+    readByAi: "Read by AI, confirm the amount",
+    downloadZip: "Download renamed invoices (.zip)",
+    preparing: "Preparing…",
+    zipNote:
+      "The zip mirrors the Drive layout (Accounting / month / Tiktok). Or file straight to Google Drive with the button above.",
+    toastDownloaded: "Renamed invoices downloaded",
+    toastDownloadedDesc: "Folders mirror the Drive layout.",
+    fileToDrive: "File to Google Drive",
+    filing: "Filing…",
+    filedTitle: (u: number) => `Filed ${u} invoice${u !== 1 ? "s" : ""} to Google Drive`,
+    filedDesc: (s: number, f: number) =>
+      [s > 0 ? `${s} already there` : "", f > 0 ? `${f} failed` : ""].filter(Boolean).join(" · ") ||
+      "Filed into Accounting / month / Tiktok.",
+    driveError: "Filing to Drive failed.",
+  },
+};
+
+export type Messages = typeof en;
+
+const sv: Messages = {
+  common: {
+    brand: "Finance Platform",
+    tagline: "Månadsavslut · Burman Enterprise",
+    footer: "Summor beräknas i kod och visas med sitt underlag, aldrig uppskattade.",
+    sections: "Sektioner",
+    startOver: "Börja om",
+    chooseDifferentFile: "Välj en annan fil",
+    tryAnother: "Försök med en annan fil",
+    language: "Språk",
+  },
+  tabs: { income: "Intäkter", ads: "Annonsfakturor" },
+  income: {
+    title: "Intäktssammanställning",
+    desc: "Ladda upp WorldFirst-intäktsexporten och få den korrekta månadssumman, och sedan en ren arbetsbok med summan ifylld.",
+    dropTitle: "Släpp WorldFirst-exporten här",
+    dropOr: "eller klicka för att välja .xlsx-filen du laddade ner",
+    dropHint: "Vi läser kolumnen “Amount entered” och summerar den åt dig",
+    exportNote:
+      "Exportera från WorldFirst filtrerat på TikTok Inc.-intäkter, välj XLS-detalj. Beloppen kommer in som text, så Excels SUMMA visar 0. Det här läser dem korrekt och ger dig den verkliga summan.",
+    reading: (name: string) => `Läser ${name}…`,
+    readingSub: "Omvandlar textbeloppen till tal och summerar kolumn D.",
+    errTitle: "Vi kunde inte läsa den filen",
+    totalIncome: "Totala intäkter",
+    countedFrom: (n: number, col: string, header: string) =>
+      `${n} rader räknade från kolumn ${col} (“${header}”), lästa från textvärdena som Excel inte kunde summera.`,
+    everyRowCounted: "Alla rader räknade",
+    needLook: (n: number) => `${n} behöver granskas`,
+    countedRows: "Räknade rader",
+    colRow: "Rad",
+    colDescription: "Beskrivning",
+    colAmount: "Belopp",
+    total: "Summa",
+    otherCurrencies: "Övriga valutor",
+    rowsLabel: "rader",
+    notCounted: (n: number) => `${n} rad${n > 1 ? "er" : ""} inte räknad${n > 1 ? "e" : ""}`,
+    rowN: (n: number) => `rad ${n}`,
+    reasonNoAmount: "Inget belopp på den här raden",
+    reasonNotNumber: "Beloppet är inte ett tal",
+    negativeNote: (n: number) =>
+      `${n} rad${n > 1 ? "er är" : " är"} negativ${n > 1 ? "a" : ""} (en återbetalning) och drogs av från summan.`,
+    exportBtn: "Exportera sammanställd .xlsx",
+    exporting: "Förbereder…",
+    toastExported: "Sammanställd arbetsbok nedladdad",
+  },
+  ads: {
+    title: "Annonsfakturor",
+    desc: "Ladda upp WorldFirst-kontoutdraget och TikTok-fakturorna (PDF). Plattformen matchar dem, flaggar allt som saknas på någon sida och döper om varje faktura redo att arkiveras.",
+    statementLabel: "WorldFirst-kontoutdrag",
+    statementHint: "PDF-kontoutdraget med annonsbetalningar (en fil)",
+    invoicesLabel: "Faktura-PDF:er",
+    invoicesHint: "Släpp TikTok-fakturorna (en eller flera)",
+    clear: "Rensa",
+    reconcile: (n: number) => (n > 0 ? `Stäm av ${n} faktura${n > 1 ? "or" : ""}` : "Stäm av"),
+    addBoth: "Lägg till kontoutdraget och minst en faktura.",
+    workingTitle: "Läser kontoutdraget och fakturorna…",
+    workingSub: "Hämtar varje summa och matchar på belopp och datum.",
+    reconciliation: "Avstämning",
+    matched: "matchade",
+    paymentsNoInvoiceShort: "betalningar utan faktura",
+    invoicesNoPaymentShort: "fakturor utan betalning",
+    fullyReconciled: "Helt avstämd",
+    needsLook: "Behöver granskas",
+    invoicesTotal: (n: number) => `Fakturor totalt (${n})`,
+    statementTotal: "Kontoutdrag totalt",
+    difference: "Differens",
+    bMatched: "Matchade",
+    bPaymentsNoInvoice: "Betalningar utan faktura",
+    bInvoicesNoPayment: "Fakturor utan betalning",
+    bUnreadable: "Kunde inte läsas",
+    paidOn: (d: string) => `betald ${d}`,
+    invoiceMissing: "faktura saknas",
+    noMatchingPayment: "ingen matchande betalning",
+    readByAi: "Läst av AI, bekräfta beloppet",
+    downloadZip: "Ladda ner omdöpta fakturor (.zip)",
+    preparing: "Förbereder…",
+    zipNote:
+      "Zip-filen speglar Drive-strukturen (Accounting / månad / Tiktok). Eller arkivera direkt till Google Drive med knappen ovan.",
+    toastDownloaded: "Omdöpta fakturor nedladdade",
+    toastDownloadedDesc: "Mapparna speglar Drive-strukturen.",
+    fileToDrive: "Arkivera till Google Drive",
+    filing: "Arkiverar…",
+    filedTitle: (u: number) => `Arkiverade ${u} faktura${u !== 1 ? "or" : ""} till Google Drive`,
+    filedDesc: (s: number, f: number) =>
+      [s > 0 ? `${s} fanns redan` : "", f > 0 ? `${f} misslyckades` : ""].filter(Boolean).join(" · ") ||
+      "Arkiverat i Accounting / månad / Tiktok.",
+    driveError: "Arkiveringen till Drive misslyckades.",
+  },
+};
+
+export const messages: Record<Lang, Messages> = { en, sv };
+
+export function isLang(value: unknown): value is Lang {
+  return value === "en" || value === "sv";
+}
