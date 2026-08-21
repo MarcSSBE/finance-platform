@@ -60,3 +60,5 @@ next-env.d.ts
 /.agent
 /.impeccable
 /.gemini
+
+.vercel
