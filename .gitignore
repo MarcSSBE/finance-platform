@@ -62,3 +62,9 @@ next-env.d.ts
 /.gemini
 
 .vercel
+
+# internal planning/infra docs (kept local, not for public repo)
+/CLAUDE.md
+/PLAN.md
+/DESIGN.md
+/PRODUCT.md
