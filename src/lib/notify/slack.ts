@@ -8,7 +8,7 @@
  * Inert unless SLACK_TOKEN + SLACK_CHANNEL are set, mirroring the Drive layer:
  * without them isSlackEnabled() is false and nothing is sent.
  */
-import type { DriveFileResult } from "@/lib/invoices/drive";
+import type { DriveFileResult } from "@/lib/drive";
 
 export function isSlackEnabled(): boolean {
   return Boolean(process.env.SLACK_TOKEN && process.env.SLACK_CHANNEL);
@@ -19,7 +19,10 @@ export interface FilingNotification {
   skipped: number;
   failed: number;
   results: DriveFileResult[];
-  /** Statement period, if known (e.g. "juni-26"), purely for context. */
+  /** What was filed, e.g. "TikTok ads invoices" or "Amazon fee invoices".
+   *  Keeps this notifier project-agnostic. Defaults to a generic label. */
+  label?: string;
+  /** Statement/invoice period, if known (e.g. "juni-26"), purely for context. */
   period?: string;
 }
 
@@ -48,7 +51,7 @@ export async function postFilingNotification(n: FilingNotification): Promise<boo
   if (!isSlackEnabled()) return false;
 
   const periodSuffix = n.period ? ` (${n.period})` : "";
-  const headline = `TikTok ads invoices filed to Drive${periodSuffix}`;
+  const headline = `${n.label ?? "Invoices"} filed to Drive${periodSuffix}`;
   const summary = [
     `*${n.uploaded}* filed`,
     n.skipped > 0 ? `${n.skipped} already there` : "",

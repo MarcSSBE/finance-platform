@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseInvoice, parseStatement } from "@/lib/invoices/parse";
 import { reconcile } from "@/lib/invoices/reconcile";
-import { isDriveEnabled } from "@/lib/invoices/drive";
+import { isDriveEnabled } from "@/lib/drive";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;

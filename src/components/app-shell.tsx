@@ -9,6 +9,7 @@ import { LanguageToggle } from "@/components/i18n/language-toggle";
 const TABS = [
   { href: "/income", key: "income", match: ["/", "/income"] },
   { href: "/ads-invoices", key: "ads", match: ["/ads-invoices"] },
+  { href: "/amazon-invoices", key: "amazon", match: ["/amazon-invoices"] },
 ] as const;
 
 /** The reconcile tick — the product's one drawn mark, in the ledger's own hand. */

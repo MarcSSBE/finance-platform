@@ -1,7 +1,9 @@
 import { extractText, getDocumentProxy } from "unpdf";
 
 /**
- * Extract the text layer from a PDF buffer.
+ * Extract the text layer from a PDF buffer. Project-agnostic shared infra used
+ * by every feature that reads PDFs (TikTok invoices, Amazon fee invoices, ...).
+ *
  * Uses `unpdf` (a serverless-optimized pdfjs build) so it runs on Vercel's Node
  * runtime without the browser globals (DOMMatrix, canvas) that plain pdfjs needs.
  */

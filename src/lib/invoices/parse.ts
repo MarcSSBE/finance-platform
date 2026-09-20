@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { extractPdfText } from "./pdf";
+import { extractPdfText } from "@/lib/pdf";
 import { parseFlexibleDate } from "./dates";
 import { buildDrivePath, buildInvoiceName } from "./naming";
 import { extractStructured, isAiEnabled } from "@/lib/ai/claude";

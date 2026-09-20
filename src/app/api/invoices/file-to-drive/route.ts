@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { parseInvoice } from "@/lib/invoices/parse";
 import {
-  fileInvoiceToDrive,
+  fileToDrive,
   getDriveClient,
   isDriveEnabled,
   type DriveFileResult,
-} from "@/lib/invoices/drive";
+} from "@/lib/drive";
 import { isSlackEnabled, postFilingNotification } from "@/lib/notify/slack";
 
 export const runtime = "nodejs";
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
         });
         continue;
       }
-      results.push(await fileInvoiceToDrive(drive, rootId, invoice, bytes));
+      results.push(await fileToDrive(drive, rootId, invoice, bytes));
     }
 
     const uploaded = results.filter((r) => r.outcome === "uploaded").length;
@@ -60,7 +60,14 @@ export async function POST(req: Request) {
     if (isSlackEnabled() && (uploaded > 0 || failed > 0)) {
       // Month label for context, e.g. "06. Jun 2026" from "Accounting/06. Jun 2026/Tiktok".
       const period = results.find((r) => r.drivePath)?.drivePath.split("/")[1];
-      notified = await postFilingNotification({ uploaded, skipped, failed, results, period });
+      notified = await postFilingNotification({
+        label: "TikTok ads invoices",
+        uploaded,
+        skipped,
+        failed,
+        results,
+        period,
+      });
     }
 
     return NextResponse.json({ uploaded, skipped, failed, results, notified });

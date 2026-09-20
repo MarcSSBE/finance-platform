@@ -1,14 +1,18 @@
 /**
- * Google Drive filing for reconciled invoices (Project 2, M4).
+ * Shared Google Drive filing infrastructure.
  *
- * Uses a dedicated service account that is a Content-manager member of the
- * "Accounting" Shared Drive, so it uploads directly (no impersonation/quota
- * issues). Finds-or-creates `Accounting / NN. Mon YYYY / Tiktok` and uploads
- * each renamed PDF there, skipping duplicates. Inert unless the env is set.
+ * This is deliberately PROJECT-AGNOSTIC: it knows how to authenticate as the
+ * dedicated service account (a Content-manager member of the "Accounting"
+ * Shared Drive), find-or-create a nested folder path below the Accounting root,
+ * and upload a file there while skipping duplicates. Any feature module (TikTok
+ * ads invoices, Amazon fee invoices, ...) files through this same client by
+ * handing it a `DriveFileItem` (name + relative Drive path), so the modules stay
+ * decoupled and there is exactly one place that talks to the Drive API.
+ *
+ * Inert unless the env is set (see isDriveEnabled).
  */
 import { Readable } from "node:stream";
 import { google, type drive_v3 } from "googleapis";
-import type { Invoice } from "./types";
 
 export function isDriveEnabled(): boolean {
   return Boolean(
@@ -80,6 +84,17 @@ async function findFile(
 
 export type FileOutcome = "uploaded" | "skipped-duplicate" | "error";
 
+/** The minimum a feature module must provide to file one document. */
+export interface DriveFileItem {
+  /** Original uploaded filename (for reporting). */
+  fileName: string;
+  /** The name to write in Drive, e.g. "Tiktok $160.83 01 jun-26 BE.pdf". */
+  proposedName: string;
+  /** Target folder relative to (and including) the Accounting root, e.g.
+   *  "Accounting/06. Jun 2026/Tiktok" or "Accounting/06. Jun 2026/Amazon". */
+  drivePath: string;
+}
+
 export interface DriveFileResult {
   fileName: string;
   proposedName: string;
@@ -90,38 +105,38 @@ export interface DriveFileResult {
 }
 
 /**
- * File one invoice: ensure `Accounting/<month>/Tiktok` exists (the invoice's
- * drivePath is relative to the Accounting root), then upload — unless a file of
- * the same name is already there.
+ * File one document: ensure its `drivePath` exists below the Accounting root,
+ * then upload it there unless a file of the same name is already present.
  */
-export async function fileInvoiceToDrive(
+export async function fileToDrive(
   drive: drive_v3.Drive,
   rootId: string,
-  invoice: Invoice,
+  item: DriveFileItem,
   bytes: Buffer,
+  mimeType = "application/pdf",
 ): Promise<DriveFileResult> {
   const base = {
-    fileName: invoice.fileName,
-    proposedName: invoice.proposedName,
-    drivePath: invoice.drivePath,
+    fileName: item.fileName,
+    proposedName: item.proposedName,
+    drivePath: item.drivePath,
   };
   try {
     // drivePath looks like "Accounting/06. Jun 2026/Tiktok" — walk the segments
-    // below the Accounting root.
-    const segments = invoice.drivePath.split("/").slice(1); // drop "Accounting"
+    // below the Accounting root (drop the leading "Accounting").
+    const segments = item.drivePath.split("/").slice(1);
     let parentId = rootId;
     for (const seg of segments) {
       parentId = await findOrCreateFolder(drive, parentId, seg);
     }
 
-    const dup = await findFile(drive, parentId, invoice.proposedName);
+    const dup = await findFile(drive, parentId, item.proposedName);
     if (dup) {
       return { ...base, outcome: "skipped-duplicate", webViewLink: dup.webViewLink };
     }
 
     const created = await drive.files.create({
-      requestBody: { name: invoice.proposedName, parents: [parentId] },
-      media: { mimeType: "application/pdf", body: Readable.from(bytes) },
+      requestBody: { name: item.proposedName, parents: [parentId] },
+      media: { mimeType, body: Readable.from(bytes) },
       fields: "id,webViewLink",
       supportsAllDrives: true,
     });
