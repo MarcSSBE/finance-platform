@@ -6,6 +6,7 @@ import {
   isDriveEnabled,
   type DriveFileResult,
 } from "@/lib/invoices/drive";
+import { isSlackEnabled, postFilingNotification } from "@/lib/notify/slack";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // Vercel Hobby max
@@ -51,7 +52,18 @@ export async function POST(req: Request) {
     const uploaded = results.filter((r) => r.outcome === "uploaded").length;
     const skipped = results.filter((r) => r.outcome === "skipped-duplicate").length;
     const failed = results.filter((r) => r.outcome === "error").length;
-    return NextResponse.json({ uploaded, skipped, failed, results });
+
+    // Notify Slack only when the run actually changed something (an upload) or
+    // hit an error — a re-run that's all duplicates is silent. Best-effort:
+    // filing already succeeded, so a Slack failure never fails the request.
+    let notified = false;
+    if (isSlackEnabled() && (uploaded > 0 || failed > 0)) {
+      // Month label for context, e.g. "06. Jun 2026" from "Accounting/06. Jun 2026/Tiktok".
+      const period = results.find((r) => r.drivePath)?.drivePath.split("/")[1];
+      notified = await postFilingNotification({ uploaded, skipped, failed, results, period });
+    }
+
+    return NextResponse.json({ uploaded, skipped, failed, results, notified });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Filing failed.";
     return NextResponse.json({ error: message }, { status: 422 });

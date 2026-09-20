@@ -54,6 +54,19 @@ const en = {
     exportBtn: "Export summarized .xlsx",
     exporting: "Preparing…",
     toastExported: "Summarized workbook downloaded",
+    insightsTitle: "Insights",
+    insightsAnalyzing: "Looking for anything worth a glance…",
+    insightsAllClear: "Nothing unusual stood out in this month.",
+    insightsAiNote: "Written by AI",
+    anomalyMixedCurrencies: (n: number) =>
+      `Income arrived in ${n} currencies. The headline total above shows the main one only.`,
+    anomalyDuplicateAmount: (amount: string, currency: string, n: number) =>
+      `The same amount (${amount} ${currency}) appears in ${n} rows. Worth a quick check for a duplicate.`,
+    anomalyLargeOutlier: (amount: string, currency: string, n: number) =>
+      n > 1
+        ? `${n} rows are much larger than a typical row (up to ${amount} ${currency}).`
+        : `One row (${amount} ${currency}) is much larger than a typical row.`,
+    anomalyRows: (rows: string) => `rows ${rows}`,
   },
   ads: {
     title: "Ads invoices",
@@ -97,6 +110,7 @@ const en = {
       [s > 0 ? `${s} already there` : "", f > 0 ? `${f} failed` : ""].filter(Boolean).join(" · ") ||
       "Filed into Accounting / month / Tiktok.",
     driveError: "Filing to Drive failed.",
+    slackNotified: "Slack notified",
   },
 };
 
@@ -146,6 +160,19 @@ const sv: Messages = {
     exportBtn: "Exportera sammanställd .xlsx",
     exporting: "Förbereder…",
     toastExported: "Sammanställd arbetsbok nedladdad",
+    insightsTitle: "Insikter",
+    insightsAnalyzing: "Letar efter något värt en titt…",
+    insightsAllClear: "Inget ovanligt stack ut den här månaden.",
+    insightsAiNote: "Skrivet av AI",
+    anomalyMixedCurrencies: (n: number) =>
+      `Intäkterna kom in i ${n} valutor. Totalsumman ovan visar bara den huvudsakliga.`,
+    anomalyDuplicateAmount: (amount: string, currency: string, n: number) =>
+      `Samma belopp (${amount} ${currency}) förekommer på ${n} rader. Värt att snabbt kontrollera en dubblett.`,
+    anomalyLargeOutlier: (amount: string, currency: string, n: number) =>
+      n > 1
+        ? `${n} rader är mycket större än en typisk rad (upp till ${amount} ${currency}).`
+        : `En rad (${amount} ${currency}) är mycket större än en typisk rad.`,
+    anomalyRows: (rows: string) => `rad ${rows}`,
   },
   ads: {
     title: "Annonsfakturor",
@@ -189,6 +216,7 @@ const sv: Messages = {
       [s > 0 ? `${s} fanns redan` : "", f > 0 ? `${f} misslyckades` : ""].filter(Boolean).join(" · ") ||
       "Arkiverat i Accounting / månad / Tiktok.",
     driveError: "Arkiveringen till Drive misslyckades.",
+    slackNotified: "Slack aviserad",
   },
 };
 

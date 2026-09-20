@@ -80,9 +80,10 @@ export function InvoicesWorkbench() {
       const res = await fetch("/api/invoices/file-to-drive", { method: "POST", body });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? t.ads.driveError);
-      toast.success(t.ads.filedTitle(data.uploaded), {
-        description: t.ads.filedDesc(data.skipped, data.failed),
-      });
+      const desc = [t.ads.filedDesc(data.skipped, data.failed), data.notified ? t.ads.slackNotified : ""]
+        .filter(Boolean)
+        .join(" · ");
+      toast.success(t.ads.filedTitle(data.uploaded), { description: desc });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t.ads.driveError);
     } finally {

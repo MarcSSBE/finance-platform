@@ -6,16 +6,20 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { UploadDropzone } from "./upload-dropzone";
 import { IncomeSummaryView } from "./income-summary-view";
-import { useT } from "@/components/i18n/language-provider";
+import type { InsightsData } from "./income-insights";
+import { useLang, useT } from "@/components/i18n/language-provider";
 import type { IncomeSummary } from "@/lib/income/types";
 
 type Status = "idle" | "parsing" | "done" | "error";
 
 export function IncomeWorkbench() {
   const t = useT();
+  const { lang } = useLang();
   const [status, setStatus] = useState<Status>("idle");
   const [file, setFile] = useState<File | null>(null);
   const [summary, setSummary] = useState<IncomeSummary | null>(null);
+  const [insights, setInsights] = useState<InsightsData | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [exporting, setExporting] = useState(false);
 
@@ -24,6 +28,7 @@ export function IncomeWorkbench() {
     setStatus("parsing");
     setError("");
     setSummary(null);
+    setInsights(null);
     try {
       const body = new FormData();
       body.append("file", next);
@@ -32,9 +37,29 @@ export function IncomeWorkbench() {
       if (!res.ok) throw new Error(data?.error ?? "We could not read that file.");
       setSummary(data.summary as IncomeSummary);
       setStatus("done");
+      // Insights load progressively so the total shows instantly; the AI
+      // narrative (if any) can take a moment.
+      void loadInsights(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setStatus("error");
+    }
+  }
+
+  async function loadInsights(next: File) {
+    setInsightsLoading(true);
+    try {
+      const body = new FormData();
+      body.append("file", next);
+      body.append("lang", lang);
+      const res = await fetch("/api/income/insights", { method: "POST", body });
+      if (!res.ok) return; // insights are a bonus; never block the summary
+      const data = await res.json();
+      setInsights({ anomalies: data.anomalies ?? [], narrative: data.narrative ?? null });
+    } catch {
+      /* insights are best-effort */
+    } finally {
+      setInsightsLoading(false);
     }
   }
 
@@ -66,6 +91,8 @@ export function IncomeWorkbench() {
     setStatus("idle");
     setFile(null);
     setSummary(null);
+    setInsights(null);
+    setInsightsLoading(false);
     setError("");
   }
 
@@ -73,6 +100,8 @@ export function IncomeWorkbench() {
     return (
       <IncomeSummaryView
         summary={summary}
+        insights={insights}
+        insightsLoading={insightsLoading}
         onExport={handleExport}
         onReset={reset}
         exporting={exporting}

@@ -17,14 +17,19 @@ import type { IncomeSummary, SkippedRow } from "@/lib/income/types";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n/language-provider";
 import type { Messages } from "@/lib/i18n/messages";
+import { IncomeInsights, type InsightsData } from "./income-insights";
 
 export function IncomeSummaryView({
   summary,
+  insights,
+  insightsLoading,
   onExport,
   onReset,
   exporting,
 }: {
   summary: IncomeSummary;
+  insights: InsightsData | null;
+  insightsLoading: boolean;
   onExport: () => void;
   onReset: () => void;
   exporting: boolean;
@@ -84,6 +89,9 @@ export function IncomeSummaryView({
           </div>
         )}
       </section>
+
+      {/* Insights — deterministic flags + an optional figure-free AI recap. */}
+      <IncomeInsights data={insights} loading={insightsLoading} />
 
       {/* The counted rows, ruled like a ledger. */}
       <section>
