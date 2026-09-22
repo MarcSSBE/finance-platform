@@ -49,8 +49,8 @@ check("vatCents", inv.vatCents, 362);
 check("totalCents", inv.totalCents, 1810);
 check("homeCurrency", inv.homeCurrency, "SEK");
 check("homeTotalCents", inv.homeTotalCents, 3977);
-check("proposedName", inv.proposedName, "Amazon EUR 18.10 Belgium 31 jul-26 BE.pdf");
-check("drivePath", inv.drivePath, "Accounting/07. Jul 2026/Amazon");
+check("proposedName", inv.proposedName, "Amazon BE Merchant EUR 18.10.pdf");
+check("drivePath", inv.drivePath, "Accounting/07. Jul 2026/Amazon/BE");
 check("no error", inv.error ?? null, null);
 
 console.log(`\n${fail === 0 ? "✓ PASS" : `✗ FAIL — ${fail} check(s) failed`}`);

@@ -8,11 +8,17 @@
  * deterministic code, never by the LLM.
  */
 
-/** The Seller Central document categories (from the Tax Document Library). */
+/**
+ * The Seller Central document categories (from the Tax Document Library).
+ * Credit notes are split by the fee they credit (fulfillment vs merchant) so the
+ * filename can carry "Fulfillment VAT credit" / "Merchant VAT credit" per
+ * Veronica's naming spec.
+ */
 export type AmazonDocType =
   | "merchant-vat-invoice" // selling/referral/subscription fees
   | "fba-tax-invoice" // Fulfillment by Amazon fees
-  | "tax-credit-note" // refunds/credits
+  | "merchant-credit-note" // credit note against merchant/selling fees
+  | "fba-credit-note" // credit note against fulfillment fees
   | "epr-service-invoice" // EPR "pay on behalf" service
   | "other";
 
@@ -43,9 +49,9 @@ export interface AmazonInvoice {
   homeCurrency?: string;
   homeTotalCents?: number;
   exchangeRate?: number;
-  /** Proposed filename, e.g. "Amazon EUR 18.10 Belgium 31 jul-26 BE.pdf". */
+  /** Proposed filename, e.g. "Amazon BE Merchant EUR 18.10.pdf". */
   proposedName: string;
-  /** Target Drive folder, e.g. "Accounting/07. Jul 2026/Amazon". */
+  /** Target Drive folder, e.g. "Accounting/07. Jul 2026/Amazon/BE". */
   drivePath: string;
   /** How the fields were read: deterministic text layer, or the AI fallback. */
   source: "text" | "ai";
