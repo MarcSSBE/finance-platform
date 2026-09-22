@@ -32,7 +32,11 @@ export function buildAmazonName(inv: {
   country: string;
   docType: AmazonDocType;
 }): string {
-  const amount = formatCents(inv.totalCents);
+  // Credit-note totals are stored negative (so the batch total nets correctly),
+  // but the filename shows the magnitude; the "VAT credit" type word already
+  // signals it is a credit (Veronica's spec: "Amazon FR Fulfillment VAT credit
+  // EUR 405.38", not "-405.38").
+  const amount = formatCents(Math.abs(inv.totalCents));
   const country = inv.country || "Unknown";
   const typeLabel = INVOICE_TYPE_LABELS[inv.docType] ?? "";
   const parts = ["Amazon", country, typeLabel, inv.currency, amount].filter(Boolean);

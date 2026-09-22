@@ -41,11 +41,13 @@ export function detectDocType(text: string): AmazonDocType {
   if (isEpr) return "epr-service-invoice";
 
   const isCredit =
-    /credit\s*note|creditnota|note de cr|nota de cr|gutschrift|nota di credito|kreditnota/.test(t);
+    /credit\s*note|creditnota|note de cr|nota de cr|gutschrift|nota di credito|kreditnota|nota de cr[eé]dito|nota kredytowa/.test(t);
+  // British invoices spell it "Fulfilment" (one l); Spanish/Italian describe FBA
+  // as "logística/logistica ... de/di Amazon"; keep the older phrasings too.
   const isFba =
-    /fulfillment by amazon|logistiek door amazon|exp[eé]di[eé] par amazon|versand durch amazon|gesti[oó]n log[ií]stica|gestione da parte di amazon/.test(t);
+    /fulfil{1,2}ment by amazon|logistiek door amazon|exp[eé]di[eé] par amazon|versand durch amazon|gesti[oó]n log[ií]stica|log[ií]stica de amazon|logistica di amazon|gestione da parte di amazon/.test(t);
   const isMerchant =
-    /verkopen via amazon|vente sur amazon|selling on amazon|verkauf(?:en)? (?:bei|über) amazon|venta en amazon|vendita su amazon/.test(t);
+    /verkopen via amazon|vente sur amazon|selling on amazon|verkauf(?:en)? (?:bei|über) amazon|venta en amazon|vendita su amazon|sprzeda\S* na amazon/.test(t);
 
   if (isCredit) {
     // Default an ambiguous credit note to merchant (the common case); a
@@ -57,16 +59,26 @@ export function detectDocType(text: string): AmazonDocType {
   return "other";
 }
 
-/** Pull the net / VAT / grand-total from the totals row (currency + up to 3 amounts). */
+/**
+ * Pull the net / VAT / grand-total from the totals row (currency + up to 3
+ * amounts). The row is anchored on the localized "total" word (German uses
+ * "Gesamtsumme", Polish "Łączna", Italian "Totale", etc.). On a credit note the
+ * amounts are negative and the minus sign precedes the currency ("-EUR 128.18"),
+ * so the sign is captured per amount, never dropped. Longer keywords are listed
+ * first so "Gesamtsumme" is preferred over "Gesamt".
+ */
 function parseTotals(text: string): { currency: string; net: number; vat: number; total: number } | null {
   const row = text.match(
-    /(?:Totaal|Total|Totale|Gesamtbetrag|Gesamt|Suma|Totalt|Toplam|Totale complessivo)\s+((?:[A-Z]{3}\s*[\d.,]+\s*){1,3})/i,
+    /(?:Totale complessivo|Gesamtsumme|Gesamtbetrag|Totaal|Totale|Totalt|Total|Gesamt|Summe|Suma|Toplam|Łącznie|Łączna)\s+((?:-?\s*[A-Z]{3}\s*[\d.,]+\s*){1,3})/i,
   );
   if (!row) return null;
-  const amounts = [...row[1].matchAll(/([A-Z]{3})\s*([\d.,]+)/g)];
+  const amounts = [...row[1].matchAll(/(-)?\s*([A-Z]{3})\s*([\d.,]+)/g)];
   if (amounts.length === 0) return null;
-  const currency = amounts[0][1].toUpperCase();
-  const cents = amounts.map((a) => parseMoneyToCents(a[2]) ?? 0);
+  const currency = amounts[0][2].toUpperCase();
+  const cents = amounts.map((a) => {
+    const v = parseMoneyToCents(a[3]) ?? 0;
+    return a[1] === "-" ? -v : v;
+  });
 
   if (cents.length >= 3) return { currency, net: cents[0], vat: cents[1], total: cents[2] };
   if (cents.length === 2) return { currency, net: cents[0], vat: cents[1] - cents[0], total: cents[1] };
@@ -152,8 +164,10 @@ export async function parseAmazonInvoice(
     }
 
     // Fallback: text layer missing a field (scanned or reformatted invoice).
+    // Hand the AI whatever we already read deterministically (country from the
+    // marketplace domain, the doc type) so those are not lost to a guess.
     if (isAiEnabled()) {
-      const ai = await aiExtractInvoice(buffer, fileName);
+      const ai = await aiExtractInvoice(buffer, fileName, { country, docType });
       if (ai) return ai;
     }
     return { ...base, invoiceNumber, country, marketplace, docType, error: "Could not read the date or total." };
@@ -178,10 +192,13 @@ const aiSchema = z.object({
 });
 
 /** AI fallback for one invoice. Always flagged needsReview; a human confirms
- *  any AI-read figure before it is trusted. Returns null on failure. */
+ *  any AI-read figure before it is trusted. Returns null on failure. The
+ *  optional `fallback` carries fields already read deterministically (country
+ *  from the marketplace domain, doc type) so the AI path does not lose them. */
 async function aiExtractInvoice(
   buffer: ArrayBuffer | Buffer,
   fileName: string,
+  fallback?: { country?: string; docType?: AmazonDocType },
 ): Promise<AmazonInvoice | null> {
   const pdfBase64 = Buffer.from(
     buffer instanceof Uint8Array ? buffer : Buffer.from(buffer as ArrayBuffer),
@@ -217,11 +234,17 @@ async function aiExtractInvoice(
   const date = parseAmazonDate(result.invoiceDate);
   if (!date) return null;
 
+  // Prefer the deterministically-read country (marketplace domain) and doc type
+  // over the AI's guesses; only fall back to the AI's values when we have none.
+  const country = (fallback?.country || result.countryCode || "").toUpperCase();
+  const docType: AmazonDocType =
+    fallback?.docType && fallback.docType !== "other" ? fallback.docType : "other";
+
   const inv: AmazonInvoice = {
     fileName,
     invoiceNumber: result.invoiceNumber,
-    docType: "other",
-    country: result.countryCode.toUpperCase(),
+    docType,
+    country,
     marketplace: result.marketplace,
     seller: "Burman Enterprise AB",
     supplier: "Amazon EU S.à r.l.",

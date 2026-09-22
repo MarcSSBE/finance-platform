@@ -63,6 +63,9 @@ next-env.d.ts
 
 .vercel
 
+# real customer invoice PDFs used for local regression testing (not committed)
+/test-data/project-3/aug-2026/
+
 # internal planning/infra docs (kept local, not for public repo)
 /CLAUDE.md
 /PLAN.md
