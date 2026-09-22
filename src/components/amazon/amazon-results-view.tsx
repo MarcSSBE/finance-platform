@@ -176,8 +176,10 @@ function docTypeLabel(d: AmazonDocType, t: Messages): string {
       return t.amazon.docMerchant;
     case "fba-tax-invoice":
       return t.amazon.docFba;
-    case "tax-credit-note":
-      return t.amazon.docCredit;
+    case "merchant-credit-note":
+      return t.amazon.docCreditMerchant;
+    case "fba-credit-note":
+      return t.amazon.docCreditFba;
     case "epr-service-invoice":
       return t.amazon.docEpr;
     default:

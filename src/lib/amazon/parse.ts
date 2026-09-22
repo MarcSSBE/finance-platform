@@ -27,17 +27,33 @@ function countryFromMarketplace(text: string): { country: string; marketplace: s
   return { country: code, marketplace: `Amazon.${m[1]}` };
 }
 
-/** Classify the document from language-agnostic keywords. */
-function detectDocType(text: string): AmazonDocType {
+/**
+ * Classify the document from language-agnostic keywords. Amazon issues five kinds
+ * Veronica names distinctly: fulfillment (FBA) fee invoice, merchant (selling) fee
+ * invoice, credit notes against each of those, and the EPR service invoice. A
+ * credit note still names the fee it credits, so we detect "is this a credit note"
+ * and "is this fulfillment vs merchant" independently and compose the two.
+ */
+export function detectDocType(text: string): AmazonDocType {
   const t = text.toLowerCase();
-  if (/credit\s*note|creditnota|note de cr|nota de cr|gutschrift|nota di credito|kreditnota/.test(t))
-    return "tax-credit-note";
-  if (/\bepr\b|pay on behalf|betaling namens|paiement pour le compte/.test(t))
-    return "epr-service-invoice";
-  if (/fulfillment by amazon|logistiek door amazon|exp[eé]di[eé] par amazon|versand durch amazon|gesti[oó]n log[ií]stica|gestione da parte di amazon/.test(t))
-    return "fba-tax-invoice";
-  if (/verkopen via amazon|vente sur amazon|selling on amazon|verkauf(?:en)? (?:bei|über) amazon|venta en amazon|vendita su amazon/.test(t))
-    return "merchant-vat-invoice";
+
+  const isEpr = /\bepr\b|pay on behalf|betaling namens|paiement pour le compte/.test(t);
+  if (isEpr) return "epr-service-invoice";
+
+  const isCredit =
+    /credit\s*note|creditnota|note de cr|nota de cr|gutschrift|nota di credito|kreditnota/.test(t);
+  const isFba =
+    /fulfillment by amazon|logistiek door amazon|exp[eé]di[eé] par amazon|versand durch amazon|gesti[oó]n log[ií]stica|gestione da parte di amazon/.test(t);
+  const isMerchant =
+    /verkopen via amazon|vente sur amazon|selling on amazon|verkauf(?:en)? (?:bei|über) amazon|venta en amazon|vendita su amazon/.test(t);
+
+  if (isCredit) {
+    // Default an ambiguous credit note to merchant (the common case); a
+    // fulfillment credit says so explicitly.
+    return isFba ? "fba-credit-note" : "merchant-credit-note";
+  }
+  if (isFba) return "fba-tax-invoice";
+  if (isMerchant) return "merchant-vat-invoice";
   return "other";
 }
 

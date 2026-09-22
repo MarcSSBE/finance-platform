@@ -6,8 +6,10 @@
  * Run with: npx tsx scripts/verify-amazon.mts
  */
 import { readFileSync } from "node:fs";
-import { parseAmazonInvoice } from "../src/lib/amazon/parse";
+import { parseAmazonInvoice, detectDocType } from "../src/lib/amazon/parse";
+import { buildAmazonName, buildAmazonDrivePath } from "../src/lib/amazon/naming";
 import { parseMoneyToCents, formatCents } from "../src/lib/amazon/dates";
+import type { AmazonDocType } from "../src/lib/amazon/types";
 
 let fail = 0;
 function check(label: string, got: unknown, expected: unknown) {
@@ -49,9 +51,49 @@ check("vatCents", inv.vatCents, 362);
 check("totalCents", inv.totalCents, 1810);
 check("homeCurrency", inv.homeCurrency, "SEK");
 check("homeTotalCents", inv.homeTotalCents, 3977);
-check("proposedName", inv.proposedName, "Amazon EUR 18.10 Belgium 31 jul-26 BE.pdf");
-check("drivePath", inv.drivePath, "Accounting/07. Jul 2026/Amazon");
+check("proposedName", inv.proposedName, "Amazon BE Merchant EUR 18.10.pdf");
+check("drivePath", inv.drivePath, "Accounting/07. Jul 2026/Amazon/BE");
 check("no error", inv.error ?? null, null);
+
+// --- Doc-type detection across languages, incl. the credit-note fulfillment/merchant split ---
+// (the one sample PDF only exercises "merchant-vat-invoice", so cover the rest synthetically)
+console.log("\ndoc-type detection:");
+const typeCases: [string, string, AmazonDocType][] = [
+  ["FR fulfillment invoice", "Facture fiscale Expédié par Amazon ... Amazon.fr", "fba-tax-invoice"],
+  ["NL merchant invoice", "Btw-factuur Verkopen via Amazon ... Amazon.com.be", "merchant-vat-invoice"],
+  ["DE fulfillment credit", "Gutschrift Versand durch Amazon ... Amazon.de", "fba-credit-note"],
+  ["FR merchant credit", "Note de crédit Vente sur Amazon ... Amazon.fr", "merchant-credit-note"],
+  ["EPR service invoice", "EPR service invoice pay on behalf ... Amazon.fr", "epr-service-invoice"],
+];
+for (const [label, text, expected] of typeCases) check(label, detectDocType(text), expected);
+
+// --- Filename + Drive path across every type (must match Veronica's confirmed spec) ---
+console.log("\nnaming spec (Veronica, confirmed 2026-09-21):");
+check(
+  "FR fulfillment credit name",
+  buildAmazonName({ currency: "EUR", totalCents: 40538, country: "FR", docType: "fba-credit-note" }),
+  "Amazon FR Fulfillment VAT credit EUR 405.38.pdf", // her literal example
+);
+check(
+  "BE merchant name",
+  buildAmazonName({ currency: "EUR", totalCents: 20226, country: "BE", docType: "merchant-vat-invoice" }),
+  "Amazon BE Merchant EUR 202.26.pdf",
+);
+check(
+  "DE FBA name",
+  buildAmazonName({ currency: "EUR", totalCents: 1000, country: "DE", docType: "fba-tax-invoice" }),
+  "Amazon DE Fulfillment EUR 10.00.pdf",
+);
+check(
+  "SE EPR name",
+  buildAmazonName({ currency: "SEK", totalCents: 12345, country: "SE", docType: "epr-service-invoice" }),
+  "Amazon SE EPR SEK 123.45.pdf",
+);
+check(
+  "per-country Drive path",
+  buildAmazonDrivePath({ y: 2026, m: 7, d: 15, iso: "2026-08-15", ordinalMs: 0 }, "FR"),
+  "Accounting/08. Aug 2026/Amazon/FR",
+);
 
 console.log(`\n${fail === 0 ? "✓ PASS" : `✗ FAIL — ${fail} check(s) failed`}`);
 process.exit(fail === 0 ? 0 : 1);
