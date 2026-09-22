@@ -34,7 +34,7 @@ function countryFromMarketplace(text: string): { country: string; marketplace: s
  * credit note still names the fee it credits, so we detect "is this a credit note"
  * and "is this fulfillment vs merchant" independently and compose the two.
  */
-function detectDocType(text: string): AmazonDocType {
+export function detectDocType(text: string): AmazonDocType {
   const t = text.toLowerCase();
 
   const isEpr = /\bepr\b|pay on behalf|betaling namens|paiement pour le compte/.test(t);
