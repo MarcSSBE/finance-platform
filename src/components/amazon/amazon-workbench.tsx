@@ -11,6 +11,18 @@ import type { AmazonBatchResult } from "@/lib/amazon/types";
 
 type Status = "idle" | "working" | "done" | "error";
 
+export interface FilingOutcome {
+  received: number;
+  uploaded: number;
+  skipped: number;
+  failed: number;
+  results: { fileName: string; proposedName: string; outcome: string; error?: string }[];
+}
+
+// Vercel serverless rejects request bodies over ~4.5 MB before they reach the
+// route, so warn the user just under that.
+const BODY_LIMIT_BYTES = 4.3 * 1024 * 1024;
+
 export function AmazonWorkbench() {
   const t = useT();
   const [status, setStatus] = useState<Status>("idle");
@@ -20,10 +32,22 @@ export function AmazonWorkbench() {
   const [error, setError] = useState("");
   const [filing, setFiling] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [outcome, setOutcome] = useState<FilingOutcome | null>(null);
+
+  function warnIfOversized(): boolean {
+    const total = files.reduce((n, f) => n + f.size, 0);
+    if (total > BODY_LIMIT_BYTES) {
+      toast.warning(t.amazon.sizeWarn((total / (1024 * 1024)).toFixed(1)));
+      return true;
+    }
+    return false;
+  }
 
   async function process() {
+    warnIfOversized();
     setStatus("working");
     setError("");
+    setOutcome(null);
     try {
       const body = new FormData();
       files.forEach((f) => body.append("files", f));
@@ -40,6 +64,7 @@ export function AmazonWorkbench() {
   }
 
   async function fileToDrive() {
+    warnIfOversized();
     setFiling(true);
     try {
       const body = new FormData();
@@ -47,10 +72,21 @@ export function AmazonWorkbench() {
       const res = await fetch("/api/amazon/file-to-drive", { method: "POST", body });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? t.amazon.driveError);
+      setOutcome({
+        received: data.received ?? data.results?.length ?? data.uploaded + data.skipped + data.failed,
+        uploaded: data.uploaded,
+        skipped: data.skipped,
+        failed: data.failed,
+        results: data.results ?? [],
+      });
       const desc = [t.amazon.filedDesc(data.skipped, data.failed), data.notified ? t.ads.slackNotified : ""]
         .filter(Boolean)
         .join(" · ");
-      toast.success(t.amazon.filedTitle(data.uploaded), { description: desc });
+      if (data.failed > 0) {
+        toast.warning(t.amazon.filedTitle(data.uploaded), { description: desc });
+      } else {
+        toast.success(t.amazon.filedTitle(data.uploaded), { description: desc });
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t.amazon.driveError);
     } finally {
@@ -59,6 +95,7 @@ export function AmazonWorkbench() {
   }
 
   async function download() {
+    warnIfOversized();
     setDownloading(true);
     try {
       const body = new FormData();
@@ -90,6 +127,7 @@ export function AmazonWorkbench() {
     setFiles([]);
     setBatch(null);
     setError("");
+    setOutcome(null);
   }
 
   if (status === "done" && batch) {
@@ -102,6 +140,7 @@ export function AmazonWorkbench() {
         onReset={reset}
         filing={filing}
         downloading={downloading}
+        outcome={outcome}
       />
     );
   }

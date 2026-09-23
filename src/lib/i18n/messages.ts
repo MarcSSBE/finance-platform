@@ -149,6 +149,16 @@ const en = {
     filedDesc: (s: number, f: number) =>
       [s > 0 ? `${s} already there` : "", f > 0 ? `${f} failed` : ""].filter(Boolean).join(" · ") ||
       "Filed into Accounting / month / Amazon.",
+    filedResultTitle: "Filing result",
+    filedReceived: (n: number) => `${n} received`,
+    filedUploaded: (n: number) => `${n} filed`,
+    filedSkipped: (n: number) => `${n} already there`,
+    filedFailed: (n: number) => `${n} could not be filed`,
+    filedComplete: "Every invoice received was accounted for.",
+    filedIncomplete:
+      "Some invoices were not filed. Check the list below, then re-run to fill the gaps (already-filed ones are skipped).",
+    sizeWarn: (mb: string) =>
+      `This upload is ${mb} MB. Uploads over about 4.5 MB can be rejected before they reach the server. Upload the Tax Document Library ZIP (smaller), or split it into two uploads.`,
     driveError: "Filing to Drive failed.",
     toastDownloaded: "Renamed invoices downloaded",
   },
@@ -295,6 +305,16 @@ const sv: Messages = {
     filedDesc: (s: number, f: number) =>
       [s > 0 ? `${s} fanns redan` : "", f > 0 ? `${f} misslyckades` : ""].filter(Boolean).join(" · ") ||
       "Arkiverat i Accounting / månad / Amazon.",
+    filedResultTitle: "Arkiveringsresultat",
+    filedReceived: (n: number) => `${n} mottagna`,
+    filedUploaded: (n: number) => `${n} arkiverade`,
+    filedSkipped: (n: number) => `${n} fanns redan`,
+    filedFailed: (n: number) => `${n} kunde inte arkiveras`,
+    filedComplete: "Alla mottagna fakturor är redovisade.",
+    filedIncomplete:
+      "Vissa fakturor arkiverades inte. Kontrollera listan nedan och kör igen för att fylla luckorna (redan arkiverade hoppas över).",
+    sizeWarn: (mb: string) =>
+      `Uppladdningen är ${mb} MB. Uppladdningar över cirka 4,5 MB kan avvisas innan de når servern. Ladda upp Tax Document Library ZIP (mindre), eller dela upp i två uppladdningar.`,
     driveError: "Arkiveringen till Drive misslyckades.",
     toastDownloaded: "Omdöpta fakturor nedladdade",
   },
