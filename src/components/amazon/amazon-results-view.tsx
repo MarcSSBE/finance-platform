@@ -1,6 +1,6 @@
 "use client";
 
-import { CloudUpload, Download, FileWarning, FolderTree, RotateCcw, ScanLine } from "lucide-react";
+import { CheckCircle2, CloudUpload, Download, FileWarning, FolderTree, RotateCcw, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -16,6 +16,14 @@ import type { AmazonBatchResult, AmazonDocType, AmazonInvoice } from "@/lib/amaz
 import { useT } from "@/components/i18n/language-provider";
 import type { Messages } from "@/lib/i18n/messages";
 
+interface FilingOutcome {
+  received: number;
+  uploaded: number;
+  skipped: number;
+  failed: number;
+  results: { fileName: string; proposedName: string; outcome: string; error?: string }[];
+}
+
 export function AmazonResultsView({
   batch,
   driveEnabled,
@@ -24,6 +32,7 @@ export function AmazonResultsView({
   onReset,
   filing,
   downloading,
+  outcome,
 }: {
   batch: AmazonBatchResult;
   driveEnabled: boolean;
@@ -32,6 +41,7 @@ export function AmazonResultsView({
   onReset: () => void;
   filing: boolean;
   downloading: boolean;
+  outcome?: FilingOutcome | null;
 }) {
   const t = useT();
   const primary = batch.totalsByCurrency[0];
@@ -70,6 +80,52 @@ export function AmazonResultsView({
           )}
         </div>
       </section>
+
+      {/* Filing result — an honest reconciliation so a partial run is never
+          mistaken for a complete one. */}
+      {outcome && (
+        <section
+          className={`rounded-lg border p-5 ${
+            outcome.failed > 0
+              ? "border-status-error/40 bg-status-error-soft/40"
+              : "border-status-ok/40 bg-status-ok-soft/40"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {outcome.failed > 0 ? (
+              <FileWarning className="h-4 w-4 text-status-error" strokeWidth={2} />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 text-status-ok" strokeWidth={2} />
+            )}
+            <h2 className="text-sm font-semibold tracking-tight">{t.amazon.filedResultTitle}</h2>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm tabular-nums">
+            <span className="font-medium">{t.amazon.filedReceived(outcome.received)}</span>
+            <span className="text-muted-foreground">{t.amazon.filedUploaded(outcome.uploaded)}</span>
+            {outcome.skipped > 0 && (
+              <span className="text-muted-foreground">{t.amazon.filedSkipped(outcome.skipped)}</span>
+            )}
+            {outcome.failed > 0 && (
+              <span className="font-medium text-status-error">{t.amazon.filedFailed(outcome.failed)}</span>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {outcome.failed > 0 ? t.amazon.filedIncomplete : t.amazon.filedComplete}
+          </p>
+          {outcome.failed > 0 && (
+            <ul className="mt-3 space-y-1.5 border-t border-status-error/20 pt-3">
+              {outcome.results
+                .filter((r) => r.outcome === "error")
+                .map((r, i) => (
+                  <li key={`${r.fileName}-${i}`} className="flex items-baseline justify-between gap-4 text-xs">
+                    <span className="truncate text-muted-foreground">{r.fileName}</span>
+                    <span className="shrink-0 text-status-error">{r.error}</span>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/* Invoice table */}
       {batch.invoices.length > 0 && (

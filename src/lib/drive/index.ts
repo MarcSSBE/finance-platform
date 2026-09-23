@@ -105,8 +105,74 @@ export interface DriveFileResult {
 }
 
 /**
+ * A folder resolver turns a Drive path ("Accounting/08. Aug 2026/Amazon/FR")
+ * into the target folder id, find-or-creating each segment below the root. It
+ * MEMOIZES every segment across the whole batch, so filing 70 invoices into
+ * `.../Amazon/<CC>` resolves the shared "08. Aug 2026" and "Amazon" folders
+ * exactly once instead of once per file. Without this, a large batch made
+ * ~3 folder-list calls per file (210 for 70) and blew past Vercel's 60s
+ * function limit, which is why only the first handful ever landed in Drive.
+ *
+ * The cache stores the in-flight PROMISE per segment, so concurrent callers
+ * asking for the same folder share one create — no duplicate folders, no race.
+ */
+export function createFolderResolver(
+  drive: drive_v3.Drive,
+  rootId: string,
+): (drivePath: string) => Promise<string> {
+  const cache = new Map<string, Promise<string>>();
+  return (drivePath: string) => {
+    // Walk the segments below the Accounting root (drop the leading "Accounting").
+    const segments = drivePath.split("/").slice(1);
+    let key = "";
+    let parent: Promise<string> = Promise.resolve(rootId);
+    for (const seg of segments) {
+      key = key ? `${key}/${seg}` : seg;
+      const cached = cache.get(key);
+      if (cached) {
+        parent = cached;
+        continue;
+      }
+      const prev = parent;
+      const next = prev.then((pid) => findOrCreateFolder(drive, pid, seg));
+      cache.set(key, next);
+      parent = next;
+    }
+    return parent;
+  };
+}
+
+/** Upload one item into an already-resolved folder, skipping a same-name dup. */
+async function uploadInto(
+  drive: drive_v3.Drive,
+  parentId: string,
+  item: DriveFileItem,
+  bytes: Buffer,
+  mimeType: string,
+): Promise<DriveFileResult> {
+  const base = {
+    fileName: item.fileName,
+    proposedName: item.proposedName,
+    drivePath: item.drivePath,
+  };
+  const dup = await findFile(drive, parentId, item.proposedName);
+  if (dup) {
+    return { ...base, outcome: "skipped-duplicate", webViewLink: dup.webViewLink };
+  }
+  const created = await drive.files.create({
+    requestBody: { name: item.proposedName, parents: [parentId] },
+    media: { mimeType, body: Readable.from(bytes) },
+    fields: "id,webViewLink",
+    supportsAllDrives: true,
+  });
+  return { ...base, outcome: "uploaded", webViewLink: created.data.webViewLink ?? undefined };
+}
+
+/**
  * File one document: ensure its `drivePath` exists below the Accounting root,
- * then upload it there unless a file of the same name is already present.
+ * then upload it there unless a file of the same name is already present. This
+ * is the single-item path (used by the small TikTok batches); a fresh resolver
+ * per call means its behavior is unchanged.
  */
 export async function fileToDrive(
   drive: drive_v3.Drive,
@@ -121,29 +187,59 @@ export async function fileToDrive(
     drivePath: item.drivePath,
   };
   try {
-    // drivePath looks like "Accounting/06. Jun 2026/Tiktok" — walk the segments
-    // below the Accounting root (drop the leading "Accounting").
-    const segments = item.drivePath.split("/").slice(1);
-    let parentId = rootId;
-    for (const seg of segments) {
-      parentId = await findOrCreateFolder(drive, parentId, seg);
-    }
-
-    const dup = await findFile(drive, parentId, item.proposedName);
-    if (dup) {
-      return { ...base, outcome: "skipped-duplicate", webViewLink: dup.webViewLink };
-    }
-
-    const created = await drive.files.create({
-      requestBody: { name: item.proposedName, parents: [parentId] },
-      media: { mimeType, body: Readable.from(bytes) },
-      fields: "id,webViewLink",
-      supportsAllDrives: true,
-    });
-    return { ...base, outcome: "uploaded", webViewLink: created.data.webViewLink ?? undefined };
+    const parentId = await createFolderResolver(drive, rootId)(item.drivePath);
+    return await uploadInto(drive, parentId, item, bytes, mimeType);
   } catch (e) {
     return { ...base, outcome: "error", error: e instanceof Error ? e.message : "Upload failed" };
   }
+}
+
+/** One document to file: its metadata plus the bytes to upload. */
+export interface DriveBatchItem {
+  item: DriveFileItem;
+  bytes: Buffer;
+  mimeType?: string;
+}
+
+/**
+ * File many documents in one pass: a SHARED memoized folder resolver (so folders
+ * resolve once for the whole batch) plus bounded concurrency (so the per-file
+ * dup-check + upload run several at a time instead of strictly serially). This
+ * is what keeps a large Amazon batch (dozens of invoices) comfortably inside the
+ * serverless time limit. Results are returned in input order.
+ */
+export async function fileToDriveBatch(
+  drive: drive_v3.Drive,
+  rootId: string,
+  items: DriveBatchItem[],
+  concurrency = 6,
+): Promise<DriveFileResult[]> {
+  const resolve = createFolderResolver(drive, rootId);
+  const results = new Array<DriveFileResult>(items.length);
+  let next = 0;
+
+  async function worker() {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      const { item, bytes, mimeType = "application/pdf" } = items[i];
+      const base = {
+        fileName: item.fileName,
+        proposedName: item.proposedName,
+        drivePath: item.drivePath,
+      };
+      try {
+        const parentId = await resolve(item.drivePath);
+        results[i] = await uploadInto(drive, parentId, item, bytes, mimeType);
+      } catch (e) {
+        results[i] = { ...base, outcome: "error", error: e instanceof Error ? e.message : "Upload failed" };
+      }
+    }
+  }
+
+  const lanes = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(Array.from({ length: lanes }, () => worker()));
+  return results;
 }
 
 export interface DriveClient {
