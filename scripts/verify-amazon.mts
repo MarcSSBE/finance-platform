@@ -64,6 +64,14 @@ const typeCases: [string, string, AmazonDocType][] = [
   ["DE fulfillment credit", "Gutschrift Versand durch Amazon ... Amazon.de", "fba-credit-note"],
   ["FR merchant credit", "Note de crédit Vente sur Amazon ... Amazon.fr", "merchant-credit-note"],
   ["EPR service invoice", "EPR service invoice pay on behalf ... Amazon.fr", "epr-service-invoice"],
+  // Localizations that fell through to "other" and produced untyped filenames like
+  // "Amazon SE SEK 95.43.pdf" in Veronica's Aug batch (fixed 2026-09-24).
+  ["SE merchant invoice", "Avgifter för Sälja på Amazon ... Amazon.se", "merchant-vat-invoice"],
+  ["SE fulfillment invoice", "Avgifter för Fraktas från Amazon ... Amazon.se", "fba-tax-invoice"],
+  ["FR fulfillment (noun form)", "Frais d'expédition par Amazon ... Amazon.fr", "fba-tax-invoice"],
+  ["ES merchant (vender)", "Tarifas de vender en Amazon ... Amazon.es", "merchant-vat-invoice"],
+  ["PL fulfillment", "Opłaty za realizację przez Amazon ... Amazon.pl", "fba-tax-invoice"],
+  ["AE Souq storage (FBA)", "Storage Billing AED 0.02 ... Souq.com FZ LLC", "fba-tax-invoice"],
 ];
 for (const [label, text, expected] of typeCases) check(label, detectDocType(text), expected);
 

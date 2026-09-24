@@ -21,10 +21,18 @@ const INVOICE_NUMBER_RE = /\b([A-Z]{2}-(?:CN-)?[A-Z]{2,4}-\d{4}-\d{3,})\b/;
 /** Map an Amazon marketplace domain suffix to a 2-letter country code. */
 function countryFromMarketplace(text: string): { country: string; marketplace: string } {
   const m = text.match(/Amazon\.((?:com|co)\.[a-z]{2}|[a-z]{2,3})\b/i);
-  if (!m) return { country: "", marketplace: "" };
-  const suffix = m[1].toLowerCase();
-  const code = suffix.split(".").pop()!.toUpperCase(); // "com.be" -> "BE", "de" -> "DE"
-  return { country: code, marketplace: `Amazon.${m[1]}` };
+  if (m) {
+    const suffix = m[1].toLowerCase();
+    const code = suffix.split(".").pop()!.toUpperCase(); // "com.be" -> "BE", "de" -> "DE"
+    return { country: code, marketplace: `Amazon.${m[1]}` };
+  }
+  // Gulf marketplaces (Amazon.ae / Amazon.sa, issued via Souq.com FZ LLC) print
+  // an English invoice with NO "Amazon.xx" domain line; there the marketplace
+  // country leads the invoice number, e.g. "AE-SFZL-INV-2026-537657". EU invoices
+  // always carry the domain line, so this fallback only ever fires for these.
+  const gulf = text.match(/Invoice Number:\s*([A-Z]{2})-[A-Z]{2,6}-INV-/i);
+  if (gulf) return { country: gulf[1].toUpperCase(), marketplace: "" };
+  return { country: "", marketplace: "" };
 }
 
 /**
@@ -42,12 +50,18 @@ export function detectDocType(text: string): AmazonDocType {
 
   const isCredit =
     /credit\s*note|creditnota|note de cr|nota de cr|gutschrift|nota di credito|kreditnota|nota de cr[eé]dito|nota kredytowa/.test(t);
-  // British invoices spell it "Fulfilment" (one l); Spanish/Italian describe FBA
-  // as "logística/logistica ... de/di Amazon"; keep the older phrasings too.
+  // FBA is described many ways: EN "Fulfilment/Fulfillment by Amazon" and "Storage
+  // Billing" (Souq/Gulf storage fee); FR "Expédié/Expédition par Amazon" (verb and
+  // noun forms, hence exp[eé]di\S*); NL "Logistiek door Amazon"; DE "Versand durch
+  // Amazon"; ES "Logística de Amazon"; IT "Logistica di Amazon"; PL "realizację
+  // przez Amazon"; SV (Amazon.se) "Fraktas från Amazon" (lit. "Shipped from Amazon").
   const isFba =
-    /fulfil{1,2}ment by amazon|logistiek door amazon|exp[eé]di[eé] par amazon|versand durch amazon|gesti[oó]n log[ií]stica|log[ií]stica de amazon|logistica di amazon|gestione da parte di amazon/.test(t);
+    /fulfil{1,2}ment by amazon|storage billing|logistiek door amazon|exp[eé]di\S* par amazon|versand durch amazon|gesti[oó]n log[ií]stica|log[ií]stica de amazon|logistica di amazon|gestione da parte di amazon|realizacj\S* przez amazon|fraktas fr[åa]n amazon/.test(t);
+  // Selling ("merchant") fees: NL "Verkopen via Amazon"; FR "Vente sur Amazon"; EN
+  // "Selling on Amazon"; DE "Verkaufen bei/über Amazon"; ES "venta/vender en Amazon"
+  // (ven[dt]\S*); IT "Vendita su Amazon"; PL "sprzedaż na Amazon"; SV "Sälja på Amazon".
   const isMerchant =
-    /verkopen via amazon|vente sur amazon|selling on amazon|verkauf(?:en)? (?:bei|über) amazon|venta en amazon|vendita su amazon|sprzeda\S* na amazon/.test(t);
+    /verkopen via amazon|vente sur amazon|selling on amazon|verkauf(?:en)? (?:bei|über) amazon|ven[dt]\S* en amazon|vendita su amazon|sprzeda\S* na amazon|s[aä]lj\S* p[åa] amazon/.test(t);
 
   if (isCredit) {
     // Default an ambiguous credit note to merchant (the common case); a
