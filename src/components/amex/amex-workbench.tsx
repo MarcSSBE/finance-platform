@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { FileText, Loader2, Plus, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n/language-provider";
@@ -10,11 +11,40 @@ import { AmexResultsView } from "./amex-results-view";
 
 type Status = "idle" | "working" | "done" | "error";
 
+/** One receipt as far as matching cares: its file name (+ a key to drop exact repeats). */
+interface ReceiptEntry {
+  name: string;
+  key: string;
+}
+
+/**
+ * Turn dropped files into receipt names. A ZIP (what Google Drive gives you when
+ * you download several files at once) is opened IN THE BROWSER and only the
+ * names of the files inside it are read, so nothing is uploaded either way.
+ */
+async function toReceiptEntries(files: File[]): Promise<ReceiptEntry[]> {
+  const out: ReceiptEntry[] = [];
+  for (const f of files) {
+    if (!/\.zip$/i.test(f.name)) {
+      out.push({ name: f.name, key: `${f.name}|${f.size}|${f.lastModified}` });
+      continue;
+    }
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(f);
+    zip.forEach((path, entry) => {
+      const name = path.split("/").pop() ?? "";
+      if (entry.dir || !name || path.startsWith("__MACOSX/") || /^(\.ds_store|desktop\.ini|thumbs\.db)$/i.test(name)) return;
+      out.push({ name, key: `${f.name}|${f.size}|${f.lastModified}|${path}` });
+    });
+  }
+  return out;
+}
+
 export function AmexWorkbench() {
   const t = useT();
   const [status, setStatus] = useState<Status>("idle");
   const [statement, setStatement] = useState<File | null>(null);
-  const [receipts, setReceipts] = useState<File[]>([]);
+  const [receipts, setReceipts] = useState<ReceiptEntry[]>([]);
   const [result, setResult] = useState<{ statement: AmexStatement; reconciliation: AmexReconciliation } | null>(null);
   const [error, setError] = useState("");
 
@@ -26,7 +56,7 @@ export function AmexWorkbench() {
       const body = new FormData();
       body.append("statement", statement);
       // Only the names: the naming convention carries vendor, amount and month.
-      body.append("receiptNames", JSON.stringify(receipts.map((f) => f.name)));
+      body.append("receiptNames", JSON.stringify(receipts.map((r) => r.name)));
       const res = await fetch("/api/amex/reconcile", { method: "POST", body });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "We could not read that statement.");
@@ -75,7 +105,7 @@ export function AmexWorkbench() {
         label={t.amex.statementLabel}
         hint={t.amex.statementHint}
         accept=".pdf,application/pdf"
-        files={statement ? [statement] : []}
+        names={statement ? [statement.name] : []}
         onFiles={(fs) => setStatement(fs.find((f) => /\.pdf$/i.test(f.name)) ?? null)}
         clearLabel={t.amex.clear}
       />
@@ -85,8 +115,15 @@ export function AmexWorkbench() {
           label={t.amex.receiptsLabel}
           hint={t.amex.receiptsHint}
           multiple
-          files={receipts}
-          onFiles={(fs) => setReceipts(dedupe([...receipts, ...fs]))}
+          names={receipts.map((r) => r.name)}
+          onFiles={async (fs) => {
+            try {
+              const added = await toReceiptEntries(fs);
+              setReceipts((prev) => dedupe([...prev, ...added]));
+            } catch {
+              toast.error(t.amex.zipError);
+            }
+          }}
           onClear={() => setReceipts([])}
           clearLabel={t.amex.clear}
         />
@@ -104,12 +141,11 @@ export function AmexWorkbench() {
 }
 
 /** The same file dropped twice must not count as two receipts. */
-function dedupe(files: File[]): File[] {
+function dedupe(entries: ReceiptEntry[]): ReceiptEntry[] {
   const seen = new Set<string>();
-  return files.filter((f) => {
-    const key = `${f.name}|${f.size}|${f.lastModified}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
+  return entries.filter((e) => {
+    if (seen.has(e.key)) return false;
+    seen.add(e.key);
     return true;
   });
 }
@@ -119,7 +155,7 @@ function FileDrop({
   hint,
   accept,
   multiple = false,
-  files,
+  names,
   onFiles,
   onClear,
   clearLabel,
@@ -128,7 +164,7 @@ function FileDrop({
   hint: string;
   accept?: string;
   multiple?: boolean;
-  files: File[];
+  names: string[];
   onFiles: (files: File[]) => void;
   onClear?: () => void;
   clearLabel: string;
@@ -145,7 +181,7 @@ function FileDrop({
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
         <span className="text-sm font-medium">{label}</span>
-        {files.length > 0 && (
+        {names.length > 0 && (
           <button
             type="button"
             onClick={() => (onClear ? onClear() : onFiles([]))}
@@ -182,12 +218,12 @@ function FileDrop({
         <span className="text-sm text-muted-foreground">{hint}</span>
       </button>
 
-      {files.length > 0 && (
+      {names.length > 0 && (
         <ul className="max-h-48 space-y-1 overflow-y-auto pt-1">
-          {files.map((f, i) => (
-            <li key={`${f.name}-${i}`} className="flex items-center gap-2 text-sm text-muted-foreground">
+          {names.map((name, i) => (
+            <li key={`${name}-${i}`} className="flex items-center gap-2 text-sm text-muted-foreground">
               <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-              <span className="truncate">{f.name}</span>
+              <span className="truncate">{name}</span>
             </li>
           ))}
         </ul>
