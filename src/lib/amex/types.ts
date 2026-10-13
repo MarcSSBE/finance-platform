@@ -52,3 +52,50 @@ export interface AmexStatement {
   /** True when the parsed lines add up to the printed total (nothing missed). */
   totalsMatch: boolean;
 }
+
+/** A receipt known by its filename (her convention, see naming.ts). */
+export interface AmexReceipt {
+  fileName: string;
+  vendor: string;
+  cents: number;
+  /** From the mark in the name ("$" → USD), null when the name has none. */
+  currency: string | null;
+  year: number;
+  month: number; // 0-11
+  day: number | null;
+}
+
+/** Why a match deserves a second look, while still counting as matched. */
+export type AmexMatchNote =
+  /** e.g. "Wispr AI $150" vs a SEK 150.00 charge: same number, different currency. */
+  | "currency-differs";
+
+export interface AmexMatch {
+  /** Index into AmexStatement.lines. */
+  lineIndex: number;
+  receipt: AmexReceipt;
+  /** Days between receipt and charge; null when the name only has a month. */
+  dayDiff: number | null;
+  notes: AmexMatchNote[];
+}
+
+export interface AmexReconciliation {
+  toleranceDays: number;
+  matched: AmexMatch[];
+  /** Charges that need a receipt and have none (the ones to chase). */
+  missing: number[];
+  /** Receipts inside the statement period that fit no charge on it. */
+  unmatchedReceipts: AmexReceipt[];
+  /**
+   * Receipts dated wholly outside the statement period (e.g. Sep 1-2 receipts
+   * belong to the previous statement). Not an error, just not this statement's.
+   */
+  outsidePeriod: AmexReceipt[];
+  /** Files whose name doesn't follow the pattern, so they could not be checked. */
+  unreadableNames: string[];
+  /**
+   * Same amount and date window but a different vendor name: never auto-paired,
+   * shown so a typo or trading name can be spotted. lineIndex → file names.
+   */
+  hints: { lineIndex: number; fileNames: string[] }[];
+}

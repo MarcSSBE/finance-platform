@@ -10,6 +10,7 @@ const TABS = [
   { href: "/income", key: "income", match: ["/", "/income"] },
   { href: "/ads-invoices", key: "ads", match: ["/ads-invoices"] },
   { href: "/amazon-invoices", key: "amazon", match: ["/amazon-invoices"] },
+  { href: "/amex-receipts", key: "amex", match: ["/amex-receipts"] },
 ] as const;
 
 /** The reconcile tick — the product's one drawn mark, in the ledger's own hand. */

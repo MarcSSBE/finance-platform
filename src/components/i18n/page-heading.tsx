@@ -3,7 +3,7 @@
 import { useT } from "./language-provider";
 
 /** Translated page title + description for a feature section. */
-export function PageHeading({ section }: { section: "income" | "ads" | "amazon" }) {
+export function PageHeading({ section }: { section: "income" | "ads" | "amazon" | "amex" }) {
   const t = useT();
   const s = t[section];
   return (
