@@ -29,8 +29,12 @@ const CURRENCY_MARKS: [RegExp, string][] = [
   [/^kr$|^sek$/i, "SEK"],
 ];
 
-/** ISO code → the mark written in a filename. Only "$" is confirmed by Veronica. */
-const CURRENCY_SYMBOL: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };
+/**
+ * ISO code → how the amount is written in a filename (confirmed by Veronica
+ * 2026-10-14): "$115", "€25" (symbol first), "150 kr" (after the amount).
+ */
+const CURRENCY_PREFIX: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };
+const CURRENCY_SUFFIX: Record<string, string> = { SEK: " kr" };
 
 export interface ParsedReceiptName {
   fileName: string;
@@ -72,23 +76,33 @@ export function parseNameAmount(s: string): number | null {
 }
 
 // 1 vendor, 2 mark, 3 amount, 4 mark, 5 day ("16 aug-26"), 6 month, 7 day ("Aug16-26"), 8 yy
+// The gap before the month may be missing after a mark ("210 krJuly-26").
 const NAME_RE =
-  /^(.+?)\s+(\$|€|£|USD|EUR|GBP|SEK)?\s*(\d(?:[\d.,]*\d)?)\s*(kr|SEK|USD|EUR|GBP|\$|€)?\s+(?:(\d{1,2})\s+)?([A-Za-zåäöÅÄÖ]{3,4})\s*(\d{1,2})?\s*-\s*(\d{2})$/i;
+  /^(.+?)\s+(\$|€|£|USD|EUR|GBP|SEK)?\s*(\d(?:[\d.,]*\d)?)\s*(kr|SEK|USD|EUR|GBP|\$|€)?(?:\s+|(?<=kr|sek)\s*)(?:(\d{1,2})\s+)?([A-Za-zåäöÅÄÖ]{3,4})\s*(\d{1,2})?\s*-\s*(\d{2})$/i;
+
+// Same, with the date written out as the vendor's own receipt prints it:
+// "Jungle scout $178- Jul 05, 2026". 1 vendor, 2 mark, 3 amount, 4 mark, 5 month, 6 day, 7 yyyy
+const LONG_DATE_RE =
+  /^(.+?)\s+(\$|€|£|USD|EUR|GBP|SEK)?\s*(\d(?:[\d.,]*\d)?)\s*(kr|SEK|USD|EUR|GBP|\$|€)?\s*-?\s+([A-Za-zåäöÅÄÖ]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})$/i;
 
 /** Read one of her filenames. Returns null when it doesn't follow the pattern. */
 export function parseReceiptName(fileName: string): ParsedReceiptName | null {
-  // Drop the extension and a download-duplicate suffix ("... aug-26 (1).pdf").
+  // Drop the extension, notes in brackets ("(lunch med ...)", a download
+  // duplicate's "(1)"), underscores from vendor file names ("slack_invoice_$299,83")
+  // and the company suffix " BE" she sometimes adds.
   const base = fileName
     .replace(/\.[a-z0-9]{2,5}$/i, "")
-    .replace(/\s*\(\d+\)$/, "")
+    .replace(/\([^()]*\)/g, " ")
+    .replace(/_/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .replace(/\s+BE$/, "");
   const m = base.match(NAME_RE);
-  if (!m) return null;
-  const g = {
-    vendor: m[1], pre: m[2], amount: m[3], post: m[4],
-    dayFirst: m[5], mon: m[6], day: m[7], yy: m[8],
-  };
+  const l = m ? null : base.match(LONG_DATE_RE);
+  if (!m && !l) return null;
+  const g = m
+    ? { vendor: m[1], pre: m[2], amount: m[3], post: m[4], dayFirst: m[5], mon: m[6], day: m[7], year: 2000 + Number(m[8]) }
+    : { vendor: l![1], pre: l![2], amount: l![3], post: l![4], dayFirst: undefined, mon: l![5], day: l![6], year: Number(l![7]) };
   const month = monthIndex(g.mon);
   const cents = parseNameAmount(g.amount);
   if (month === null || cents === null || cents === 0) return null;
@@ -102,7 +116,7 @@ export function parseReceiptName(fileName: string): ParsedReceiptName | null {
     vendor: g.vendor.trim(),
     cents,
     currency,
-    year: 2000 + Number(g.yy),
+    year: g.year,
     month,
     day,
   };
@@ -130,8 +144,13 @@ export function buildReceiptName(r: {
   const [y, mo, d] = r.dateISO.split("-").map(Number);
   const mon = MONTHS[mo - 1];
   const yy = String(y).slice(2);
-  const symbol = CURRENCY_SYMBOL[r.currency];
-  const amount = symbol ? `${symbol}${formatNameAmount(r.cents)}` : `${r.currency} ${formatNameAmount(r.cents)}`;
+  const prefix = CURRENCY_PREFIX[r.currency];
+  const suffix = CURRENCY_SUFFIX[r.currency];
+  const amount = prefix
+    ? `${prefix}${formatNameAmount(r.cents)}`
+    : suffix
+      ? `${formatNameAmount(r.cents)}${suffix}`
+      : `${r.currency} ${formatNameAmount(r.cents)}`;
   const when = r.withDay ? `${mon[0].toUpperCase()}${mon.slice(1)}${d}-${yy}` : `${mon}-${yy}`;
   return `${r.vendor} ${amount} ${when}.pdf`;
 }

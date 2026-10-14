@@ -1,6 +1,16 @@
 "use client";
 
-import { BadgeCheck, CalendarX, ClipboardCopy, FileQuestion, FileWarning, FileX, RotateCcw, TriangleAlert } from "lucide-react";
+import {
+  BadgeCheck,
+  CalendarX,
+  ClipboardCopy,
+  FileQuestion,
+  FileStack,
+  FileWarning,
+  FileX,
+  RotateCcw,
+  TriangleAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { IconTile, StatusBadge } from "@/components/status-badge";
@@ -28,12 +38,15 @@ export function AmexResultsView({
 
   const needReceipt = statement.lines.filter((l) => l.needsReceipt).length;
   const notNeeded = statement.lines.length - needReceipt;
+  const isWf = statement.source === "worldfirst";
   const hintFor = new Map(r.hints.map((h) => [h.lineIndex, h.fileNames]));
+  const amountHintFor = new Map(r.amountHints.map((h) => [h.lineIndex, h.fileNames]));
   const clean = r.missing.length === 0 && statement.totalsMatch;
 
   async function copyMissing() {
     const rows = r.missing.map((i) => `${line(i).dateISO}  ${charge(line(i))}  ${line(i).description}`);
-    const text = [a.copyHeader(statement.periodStartISO, statement.periodEndISO), ...rows].join("\n");
+    const source = isWf ? a.worldfirst : "Amex";
+    const text = [a.copyHeader(source, statement.periodStartISO, statement.periodEndISO), ...rows].join("\n");
     try {
       await navigator.clipboard.writeText(text);
       toast.success(a.copied);
@@ -49,7 +62,7 @@ export function AmexResultsView({
           <div>
             <p className="text-sm text-muted-foreground">
               {a.period(statement.periodStartISO, statement.periodEndISO)}
-              {statement.cardEnding && <> · {a.card(statement.cardEnding)}</>}
+              {isWf ? <> · {a.worldfirst}</> : statement.cardEnding && <> · {a.card(statement.cardEnding)}</>}
             </p>
             <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1">
               <Stat n={r.matched.length} label={a.matched} />
@@ -70,9 +83,11 @@ export function AmexResultsView({
 
         <div className="mt-5 space-y-1 border-t border-rule pt-4 text-sm">
           <p className="text-muted-foreground">
-            {a.needReceipt(needReceipt)} · {a.notNeeded(notNeeded)}
+            {a.needReceipt(needReceipt)} · {isWf ? a.notNeededWf(notNeeded) : a.notNeeded(notNeeded)}
           </p>
-          {statement.totalsMatch ? (
+          {isWf ? (
+            <p className="text-muted-foreground">{a.wfRead(statement.lines.length)}</p>
+          ) : statement.totalsMatch ? (
             <p className="text-muted-foreground">{a.totalCheckOk(money(statement.parsedPurchasesCents, "").trim())}</p>
           ) : (
             <p className="font-medium text-status-error">
@@ -102,6 +117,9 @@ export function AmexResultsView({
               <ChargeRow l={line(i)} amount={charge(line(i))} />
               {hintFor.has(i) && (
                 <p className="mt-1.5 text-xs text-status-warn">{a.possible(hintFor.get(i)!.join(", "))}</p>
+              )}
+              {amountHintFor.has(i) && (
+                <p className="mt-1.5 text-xs text-status-warn">{a.amountDiffers(amountHintFor.get(i)!.join(", "))}</p>
               )}
             </li>
           ))}
@@ -148,6 +166,12 @@ export function AmexResultsView({
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span className="font-mono text-foreground">{m.receipt.fileName}</span>
                   {m.dayDiff !== null && m.dayDiff > 0 && <span>· {a.dayOff(m.dayDiff)}</span>}
+                  {m.notes.includes("combined") && m.covers && (
+                    <span className="inline-flex items-center gap-1">
+                      · <FileStack className="h-3 w-3" strokeWidth={2} /> {a.combined(m.covers)}
+                    </span>
+                  )}
+                  {m.notes.includes("billed-later") && <span>· {a.billedLater}</span>}
                   {m.notes.includes("currency-differs") && (
                     <StatusBadge tone="warn" icon={<TriangleAlert className="h-3 w-3" strokeWidth={2} />}>
                       {a.currencyDiffers(m.receipt.currency ?? a.noCurrency, l.originalCurrency)}
@@ -161,7 +185,13 @@ export function AmexResultsView({
       )}
 
       {r.outsidePeriod.length > 0 && (
-        <Bucket title={a.bOutside} tone="neutral" icon={<CalendarX className="h-3.5 w-3.5" strokeWidth={2} />} count={r.outsidePeriod.length}>
+        <Bucket
+          title={a.bOutside}
+          tone="neutral"
+          icon={<CalendarX className="h-3.5 w-3.5" strokeWidth={2} />}
+          count={r.outsidePeriod.length}
+          note={a.outsideNote}
+        >
           {r.outsidePeriod.map((rc, i) => (
             <ReceiptRow key={`${rc.fileName}-${i}`} rc={rc} />
           ))}
