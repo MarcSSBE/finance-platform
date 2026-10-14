@@ -205,6 +205,7 @@ export function parseAmexItems(items: PdfTextItem[]): AmexStatement {
   const printedPurchasesCents = amountBesideLabel(items, /^Summan av alla nya köp$/i);
 
   return {
+    source: "amex",
     statementDateISO: statementDate ? toIso(statementDate[1]) ?? "" : "",
     periodStartISO: period ? toIso(period[1]) ?? "" : "",
     periodEndISO: period ? toIso(period[2]) ?? "" : "",

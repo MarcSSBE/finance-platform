@@ -11,7 +11,9 @@ export type AmexLineKind =
   | "purchase" // a card charge that needs a receipt
   | "payment" // "Betalning Mottagen, Tack" (card bill paid), no receipt
   | "card-fee" // Amex's own annual fee, the statement is the receipt
-  | "credit"; // refund/credit on a purchase (CR)
+  | "credit" // refund/credit on a purchase (CR)
+  | "transfer" // WorldFirst bank transfer/withdrawal, documented when it was paid
+  | "tiktok-ads"; // WorldFirst TikTok Ads charge, filed with its invoice by the Ads feature
 
 /** One transaction row from the statement. */
 export interface AmexLine {
@@ -21,7 +23,10 @@ export interface AmexLine {
   processDateISO: string;
   /** Merchant text as printed, e.g. "Helium 10 Diamond Irvine". */
   description: string;
-  /** Amount billed in SEK (includes the currency fee). Negative for payments/credits. */
+  /**
+   * Amount billed in SEK (includes the currency fee). Negative for payments/credits.
+   * Amex only: 0 on a WorldFirst line, whose accounts are in the charge currency.
+   */
   sekCents: number;
   /**
    * The amount in the currency actually charged. For foreign purchases this is
@@ -38,18 +43,23 @@ export interface AmexLine {
 }
 
 export interface AmexStatement {
-  /** Fakturadatum. */
+  /** Which statement this is: the Amex PDF or a WorldFirst account export (.xlsx). */
+  source: "amex" | "worldfirst";
+  /** Fakturadatum (Amex); the export's last day for WorldFirst. */
   statementDateISO: string;
   periodStartISO: string;
   periodEndISO: string;
   /** Last 5 digits as printed ("Kortnummer som slutar på"). */
   cardEnding: string;
   lines: AmexLine[];
-  /** "Nya köp" total as printed on the statement. */
+  /** "Nya köp" total as printed on the statement (none on a WorldFirst export). */
   printedPurchasesCents: number | null;
   /** Sum of the parsed purchase/fee/credit lines, computed in code. */
   parsedPurchasesCents: number;
-  /** True when the parsed lines add up to the printed total (nothing missed). */
+  /**
+   * True when the parsed lines add up to the printed total (nothing missed).
+   * WorldFirst exports are structured rows, not rebuilt from PDF text, so true.
+   */
   totalsMatch: boolean;
 }
 
@@ -68,7 +78,14 @@ export interface AmexReceipt {
 /** Why a match deserves a second look, while still counting as matched. */
 export type AmexMatchNote =
   /** e.g. "Wispr AI $150" vs a SEK 150.00 charge: same number, different currency. */
-  | "currency-differs";
+  | "currency-differs"
+  /**
+   * Named for the month the service covers, charged the month after, which the
+   * statement text confirms: "Heroku $522,24 juni-26" ↔ "Heroku* Jun-112685214" on Jul 6.
+   */
+  | "billed-later"
+  /** One receipt covering several charges, e.g. Google Ads' monthly receipt. */
+  | "combined";
 
 export interface AmexMatch {
   /** Index into AmexStatement.lines. */
@@ -77,6 +94,8 @@ export interface AmexMatch {
   /** Days between receipt and charge; null when the name only has a month. */
   dayDiff: number | null;
   notes: AmexMatchNote[];
+  /** For a "combined" receipt: how many charges it covers in total. */
+  covers?: number;
 }
 
 export interface AmexReconciliation {
@@ -98,4 +117,10 @@ export interface AmexReconciliation {
    * shown so a typo or trading name can be spotted. lineIndex → file names.
    */
   hints: { lineIndex: number; fileNames: string[] }[];
+  /**
+   * Same vendor and date window but a different amount: never auto-paired
+   * (a wrong amount would hide a missing receipt), shown so a typo or a
+   * part-payment can be spotted. lineIndex → file names.
+   */
+  amountHints: { lineIndex: number; fileNames: string[] }[];
 }

@@ -1,7 +1,10 @@
-import type { AmexMatch, AmexReceipt, AmexReconciliation, AmexStatement } from "./types";
+import type { AmexLine, AmexMatch, AmexReceipt, AmexReconciliation, AmexStatement } from "./types";
 
 const DEFAULT_TOLERANCE_DAYS = 3;
 const DAY_MS = 86_400_000;
+/** A monthly bill's final charge can land on the 1st-3rd of the next month. */
+const SPILL_DAYS = 3;
+const MONTH_ABBR = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 /**
  * Match statement charges to receipts. Deliberately conservative, because a
@@ -13,12 +16,22 @@ const DAY_MS = 86_400_000;
  *   - vendor: the receipt's vendor must match the statement text (small typos
  *     like "Twillio" for "Twilio" are tolerated);
  *   - date: a receipt with a day must be within ±tolerance days of the charge;
- *     one with only a month ("aug-26") must fall in that purchase month.
+ *     one with only a month ("aug-26") must fall in that purchase month, or be
+ *     a bill for that month charged the month after when the statement text
+ *     itself names the month ("Heroku* Jun-112685214" charged Jul 6).
  *
  * Each receipt and each charge is used at most once. Candidate pairs are taken
- * best-first (same currency, then closest date), so a receipt naming the exact
- * day wins its own charge before a month-only receipt takes any remaining one.
- * Amount + date fits with a different vendor are only surfaced as hints.
+ * best-first (same currency, then same month, then closest date), so a receipt
+ * naming the exact day wins its own charge before a month-only receipt takes
+ * any remaining one.
+ *
+ * Then, a month-only receipt still unused may cover SEVERAL charges (Google
+ * Ads bills its monthly spend as many auto-charges but issues one receipt):
+ * it is paired only when the same vendor's remaining charges for that month
+ * (plus any on the 1st-3rd of the next) add up to its amount to the cent.
+ *
+ * Amount + date fits with a different vendor, and vendor + date fits with a
+ * different amount, are only surfaced as hints.
  */
 export function reconcileAmex(
   statement: AmexStatement,
@@ -27,45 +40,49 @@ export function reconcileAmex(
   toleranceDays = DEFAULT_TOLERANCE_DAYS,
 ): AmexReconciliation {
   const lines = statement.lines;
-  const wanted = lines.map((l, i) => ({ l, i })).filter(({ l }) => l.needsReceipt);
-
-  const periodStart = toMs(statement.periodStartISO);
-  const periodEnd = toMs(statement.periodEndISO);
-  const outsidePeriod: AmexReceipt[] = [];
-  const inScope: AmexReceipt[] = [];
-  for (const r of receipts) {
-    const [from, to] = receiptWindow(r);
-    if (Number.isFinite(periodStart) && Number.isFinite(periodEnd) && (to < periodStart || from > periodEnd)) {
-      outsidePeriod.push(r);
-    } else {
-      inScope.push(r);
-    }
-  }
+  const wanted = lines.map((l, i) => ({ l, i })).filter(({ l }) => l.needsReceipt && l.originalCents > 0);
 
   interface Candidate {
     lineIndex: number;
     receiptIndex: number;
     dayDiff: number | null;
     currencyDiffers: boolean;
+    billedLater: boolean;
   }
   const candidates: Candidate[] = [];
   const hintMap = new Map<number, Set<number>>();
+  const amountHintMap = new Map<number, Set<number>>();
+  const note = (map: Map<number, Set<number>>, i: number, ri: number) => {
+    if (!map.has(i)) map.set(i, new Set());
+    map.get(i)!.add(ri);
+  };
 
-  inScope.forEach((r, ri) => {
+  receipts.forEach((r, ri) => {
     for (const { l, i } of wanted) {
-      if (l.originalCents !== r.cents) continue;
-      const dayDiff = dateFit(r, l.dateISO, toleranceDays);
-      if (dayDiff === false) continue;
-      if (!vendorMatches(r.vendor, l.description)) {
-        if (!hintMap.has(i)) hintMap.set(i, new Set());
-        hintMap.get(i)!.add(ri);
+      const fit = dateFit(r, l, toleranceDays);
+      if (fit === false) continue;
+      const sameVendor = vendorMatches(r.vendor, l.description);
+      if (l.originalCents !== r.cents) {
+        if (
+          sameVendor &&
+          !fit.billedLater &&
+          !namesOtherMonth(l.description, r.month) &&
+          (r.currency === null || r.currency === l.originalCurrency)
+        ) {
+          note(amountHintMap, i, ri);
+        }
+        continue;
+      }
+      if (!sameVendor) {
+        if (!fit.billedLater) note(hintMap, i, ri);
         continue;
       }
       candidates.push({
         lineIndex: i,
         receiptIndex: ri,
-        dayDiff,
+        dayDiff: fit.dayDiff,
         currencyDiffers: r.currency !== null && r.currency !== l.originalCurrency,
+        billedLater: fit.billedLater,
       });
     }
   });
@@ -73,6 +90,7 @@ export function reconcileAmex(
   candidates.sort(
     (a, b) =>
       Number(a.currencyDiffers) - Number(b.currencyDiffers) ||
+      Number(a.billedLater) - Number(b.billedLater) ||
       (a.dayDiff ?? toleranceDays + 1) - (b.dayDiff ?? toleranceDays + 1) ||
       lines[a.lineIndex].dateISO.localeCompare(lines[b.lineIndex].dateISO) ||
       a.receiptIndex - b.receiptIndex,
@@ -85,38 +103,99 @@ export function reconcileAmex(
     if (usedLine.has(c.lineIndex) || usedReceipt.has(c.receiptIndex)) continue;
     usedLine.add(c.lineIndex);
     usedReceipt.add(c.receiptIndex);
-    matched.push({
-      lineIndex: c.lineIndex,
-      receipt: inScope[c.receiptIndex],
-      dayDiff: c.dayDiff,
-      notes: c.currencyDiffers ? ["currency-differs"] : [],
-    });
+    const notes: AmexMatch["notes"] = [];
+    if (c.currencyDiffers) notes.push("currency-differs");
+    if (c.billedLater) notes.push("billed-later");
+    matched.push({ lineIndex: c.lineIndex, receipt: receipts[c.receiptIndex], dayDiff: c.dayDiff, notes });
   }
+
+  // One receipt, several charges (exact sum only).
+  receipts.forEach((r, ri) => {
+    if (usedReceipt.has(ri) || r.day !== null) return;
+    const pool = wanted.filter(
+      ({ l, i }) =>
+        !usedLine.has(i) &&
+        (r.currency === null || r.currency === l.originalCurrency) &&
+        vendorMatches(r.vendor, l.description),
+    );
+    const inMonth = pool.filter(({ l }) => monthOffset(l.dateISO, r) === 0);
+    const spill = pool.filter(({ l }) => monthOffset(l.dateISO, r) === 1 && dayOf(l.dateISO) <= SPILL_DAYS);
+    // The 1st-3rd of its own month may hold the PREVIOUS month's final charge.
+    const ownEarly = inMonth.filter(({ l }) => dayOf(l.dateISO) <= SPILL_DAYS);
+    const options = [inMonth, [...inMonth, ...spill], [...inMonth.filter((x) => !ownEarly.includes(x)), ...spill]];
+    for (const set of options) {
+      if (set.length < 2) continue;
+      if (new Set(set.map(({ l }) => l.originalCurrency)).size !== 1) continue;
+      if (set.reduce((a, { l }) => a + l.originalCents, 0) !== r.cents) continue;
+      usedReceipt.add(ri);
+      for (const { i } of set) {
+        usedLine.add(i);
+        matched.push({ lineIndex: i, receipt: r, dayDiff: null, notes: ["combined"], covers: set.length });
+      }
+      break;
+    }
+  });
+
   matched.sort((a, b) => lines[a.lineIndex].dateISO.localeCompare(lines[b.lineIndex].dateISO) || a.lineIndex - b.lineIndex);
 
+  // Unused receipts that belong to another statement are set aside; the rest
+  // fit no charge on this one. A statement runs 3rd to 2nd, so a month-only
+  // receipt counts as this statement's only when most of its month is inside
+  // the period (an "aug-26" receipt is not this one's just because Aug 1-2 are).
+  const periodStart = toMs(statement.periodStartISO);
+  const periodEnd = toMs(statement.periodEndISO);
+  const outsidePeriod: AmexReceipt[] = [];
+  const unmatchedReceipts: AmexReceipt[] = [];
+  receipts.forEach((r, ri) => {
+    if (usedReceipt.has(ri)) return;
+    const [from, to] = receiptWindow(r);
+    const overlapDays = (Math.min(to, periodEnd) - Math.max(from, periodStart)) / DAY_MS + 1;
+    const windowDays = (to - from) / DAY_MS + 1;
+    const outside = Number.isFinite(periodStart) && Number.isFinite(periodEnd) && overlapDays * 2 < windowDays;
+    (outside ? outsidePeriod : unmatchedReceipts).push(r);
+  });
+
   const missing = wanted.map(({ i }) => i).filter((i) => !usedLine.has(i));
-  const hints = missing
-    .filter((i) => hintMap.has(i))
-    .map((i) => ({
-      lineIndex: i,
-      fileNames: [...hintMap.get(i)!].filter((ri) => !usedReceipt.has(ri)).map((ri) => inScope[ri].fileName),
-    }))
-    .filter((h) => h.fileNames.length > 0);
+  const unmatchedSet = new Set(unmatchedReceipts);
+  const hintsFrom = (map: Map<number, Set<number>>) =>
+    missing
+      .filter((i) => map.has(i))
+      .map((i) => ({
+        lineIndex: i,
+        fileNames: [...map.get(i)!].filter((ri) => unmatchedSet.has(receipts[ri])).map((ri) => receipts[ri].fileName),
+      }))
+      .filter((h) => h.fileNames.length > 0);
 
   return {
     toleranceDays,
     matched,
     missing,
-    unmatchedReceipts: inScope.filter((_, ri) => !usedReceipt.has(ri)),
+    unmatchedReceipts,
     outsidePeriod,
     unreadableNames,
-    hints,
+    hints: hintsFrom(hintMap),
+    amountHints: hintsFrom(amountHintMap),
   };
 }
 
 function toMs(iso: string): number {
   const [y, m, d] = iso.split("-").map(Number);
   return y ? Date.UTC(y, m - 1, d) : NaN;
+}
+
+function dayOf(iso: string): number {
+  return Number(iso.slice(8, 10));
+}
+
+/** Months from the receipt's month to the charge's (0 = same month, 1 = the next). */
+function monthOffset(chargeISO: string, r: AmexReceipt): number {
+  const [y, m] = chargeISO.split("-").map(Number);
+  return (y - r.year) * 12 + (m - 1 - r.month);
+}
+
+/** "Heroku* May-112220703": the statement text names a month other than this one. */
+function namesOtherMonth(description: string, month: number): boolean {
+  return tokens(description).some((t) => MONTH_ABBR.includes(t) && t !== MONTH_ABBR[month]);
 }
 
 /** The span of dates a receipt name can mean: one day, or its whole month. */
@@ -129,17 +208,24 @@ function receiptWindow(r: AmexReceipt): [number, number] {
 }
 
 /**
- * Does the charge date fit the receipt? Returns the day difference for a dated
- * receipt, null for a month-only receipt in the right month, false otherwise.
+ * Does the charge date fit the receipt? A dated receipt must be within the
+ * tolerance (dayDiff = days apart). A month-only receipt fits a charge in that
+ * month, or (billedLater) one in the next month whose statement text names the
+ * receipt's month, as monthly bills charged in arrears do ("Heroku* Jun-...").
  */
-function dateFit(r: AmexReceipt, chargeISO: string, toleranceDays: number): number | null | false {
-  const charge = toMs(chargeISO);
+function dateFit(
+  r: AmexReceipt,
+  l: AmexLine,
+  toleranceDays: number,
+): { dayDiff: number | null; billedLater: boolean } | false {
   if (r.day !== null) {
-    const diff = Math.round(Math.abs(charge - Date.UTC(r.year, r.month, r.day)) / DAY_MS);
-    return diff <= toleranceDays ? diff : false;
+    const diff = Math.round(Math.abs(toMs(l.dateISO) - Date.UTC(r.year, r.month, r.day)) / DAY_MS);
+    return diff <= toleranceDays ? { dayDiff: diff, billedLater: false } : false;
   }
-  const d = new Date(charge);
-  return d.getUTCFullYear() === r.year && d.getUTCMonth() === r.month ? null : false;
+  const offset = monthOffset(l.dateISO, r);
+  if (offset === 0) return { dayDiff: null, billedLater: false };
+  if (offset === 1 && tokens(l.description).includes(MONTH_ABBR[r.month])) return { dayDiff: null, billedLater: true };
+  return false;
 }
 
 // ── vendor matching ─────────────────────────────────────────────────────────
@@ -155,6 +241,7 @@ const ALIASES: Record<string, string[]> = {
   facebook: ["facebk"],
   meta: ["facebk"],
   chatgpt: ["openai"],
+  sas: ["flysas"],
 };
 
 function tokens(s: string): string[] {

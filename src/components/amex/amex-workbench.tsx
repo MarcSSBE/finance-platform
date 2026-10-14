@@ -104,9 +104,9 @@ export function AmexWorkbench() {
       <FileDrop
         label={t.amex.statementLabel}
         hint={t.amex.statementHint}
-        accept=".pdf,application/pdf"
+        accept=".pdf,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         names={statement ? [statement.name] : []}
-        onFiles={(fs) => setStatement(fs.find((f) => /\.pdf$/i.test(f.name)) ?? null)}
+        onFiles={(fs) => setStatement(fs.find((f) => /\.(pdf|xlsx)$/i.test(f.name)) ?? null)}
         clearLabel={t.amex.clear}
       />
 
