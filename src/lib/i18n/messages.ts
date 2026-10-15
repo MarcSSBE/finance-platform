@@ -164,15 +164,19 @@ const en = {
   },
   amex: {
     title: "Amex receipts",
-    desc: "Upload the Amex statement or the WorldFirst export, and the receipts you have. The platform checks every charge against a receipt and lists the ones still missing.",
-    statementLabel: "Statement",
-    statementHint: "Drop the Amex statement PDF or the WorldFirst Excel export",
+    desc: "Upload the Amex statement and/or the WorldFirst export, and the receipts you have. The platform checks every charge against a receipt and lists the ones still missing.",
+    statementLabel: "Statements",
+    statementHint: "Drop the Amex statement PDF, the WorldFirst Excel export, or both (receipts then count for either card)",
     receiptsLabel: "Receipts",
     receiptsHint: "Drop the receipt files or the ZIP from Google Drive (only the file names are read, nothing is uploaded)",
     zipError: "That ZIP could not be opened. Try downloading it again.",
     namingNote: "Receipts are read by their file name, e.g. Zendesk $115 aug-26, Lovable €25 aug-26 or Wispr 150 kr aug-26.",
     clear: "Clear",
-    check: (n: number) => (n > 0 ? `Check ${n} receipt${n !== 1 ? "s" : ""} against the statement` : "Check the statement"),
+    check: (n: number, s: number) => {
+      const target = s > 1 ? `the ${s} statements` : "the statement";
+      return n > 0 ? `Check ${n} receipt${n !== 1 ? "s" : ""} against ${target}` : `Check ${target}`;
+    },
+    checkedTogether: (sources: string) => `${sources}, checked together`,
     needStatement: "Add the statement.",
     workingTitle: "Reading the statement…",
     workingSub: "Matching each charge to a receipt by amount, vendor and date.",
@@ -196,6 +200,9 @@ const en = {
     bMatched: "Matched",
     bUnmatched: "Receipts with no matching charge",
     unmatchedNote: "Check the amount and month in the name. A receipt paid with the other card (Amex or WorldFirst) also shows up here.",
+    unmatchedNoteCombined: "Checked against every statement above, so these fit no charge on any card. Check the amount and month in the name.",
+    notNeededMixed: (n: number) =>
+      `${n} line${n !== 1 ? "s" : ""} need none (card fee, payments, refunds, transfers, TikTok Ads)`,
     bOutside: "For another statement period",
     outsideNote: "Their date or month falls mostly outside this statement's period.",
     bUnreadable: "File names not in the naming pattern",
@@ -370,15 +377,19 @@ const sv: Messages = {
   },
   amex: {
     title: "Amex-kvitton",
-    desc: "Ladda upp Amex-fakturan eller WorldFirst-exporten och kvittona du har. Plattformen kontrollerar varje köp mot ett kvitto och listar de som fortfarande saknas.",
-    statementLabel: "Faktura eller kontoutdrag",
-    statementHint: "Släpp Amex-fakturan (PDF) eller WorldFirst-exporten (Excel) här",
+    desc: "Ladda upp Amex-fakturan och/eller WorldFirst-exporten och kvittona du har. Plattformen kontrollerar varje köp mot ett kvitto och listar de som fortfarande saknas.",
+    statementLabel: "Fakturor och kontoutdrag",
+    statementHint: "Släpp Amex-fakturan (PDF), WorldFirst-exporten (Excel) eller båda (då räknas kvitton för båda korten)",
     receiptsLabel: "Kvitton",
     receiptsHint: "Släpp kvittofilerna eller ZIP-filen från Google Drive här (bara filnamnen läses, inget laddas upp)",
     zipError: "ZIP-filen kunde inte öppnas. Försök ladda ner den igen.",
     namingNote: "Kvitton läses via filnamnet, t.ex. Zendesk $115 aug-26, Lovable €25 aug-26 eller Wispr 150 kr aug-26.",
     clear: "Rensa",
-    check: (n: number) => (n > 0 ? `Kontrollera ${n} kvitto${n !== 1 ? "n" : ""} mot fakturan` : "Kontrollera fakturan"),
+    check: (n: number, s: number) => {
+      const target = s > 1 ? `de ${s} underlagen` : "fakturan";
+      return n > 0 ? `Kontrollera ${n} kvitto${n !== 1 ? "n" : ""} mot ${target}` : `Kontrollera ${target}`;
+    },
+    checkedTogether: (sources: string) => `${sources}, kontrollerade tillsammans`,
     needStatement: "Lägg till fakturan eller kontoutdraget.",
     workingTitle: "Läser fakturan…",
     workingSub: "Matchar varje köp mot ett kvitto på belopp, leverantör och datum.",
@@ -402,6 +413,9 @@ const sv: Messages = {
     bMatched: "Matchade",
     bUnmatched: "Kvitton utan matchande köp",
     unmatchedNote: "Kontrollera belopp och månad i namnet. Kvitton som betalats med det andra kortet (Amex eller WorldFirst) hamnar också här.",
+    unmatchedNoteCombined: "Kontrollerade mot alla underlag ovan, så de passar inget köp på något kort. Kontrollera belopp och månad i namnet.",
+    notNeededMixed: (n: number) =>
+      `${n} rad${n !== 1 ? "er" : ""} behöver inget (årsavgift, inbetalningar, återbetalningar, överföringar, TikTok Ads)`,
     bOutside: "Hör till en annan period",
     outsideNote: "Datum eller månad ligger mest utanför den här periodens datum.",
     bUnreadable: "Filnamn som inte följer mönstret",

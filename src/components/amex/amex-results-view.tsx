@@ -19,10 +19,14 @@ import type { AmexLine, AmexReceipt, AmexReconciliation, AmexStatement } from "@
 
 export function AmexResultsView({
   statement,
+  parts,
   reconciliation: r,
   onReset,
 }: {
+  /** What was matched: one statement, or several combined (lines tagged with `part`). */
   statement: AmexStatement;
+  /** The uploaded statements, each with its own period, card and totals check. */
+  parts: AmexStatement[];
   reconciliation: AmexReconciliation;
   onReset: () => void;
 }) {
@@ -38,15 +42,25 @@ export function AmexResultsView({
 
   const needReceipt = statement.lines.filter((l) => l.needsReceipt).length;
   const notNeeded = statement.lines.length - needReceipt;
-  const isWf = statement.source === "worldfirst";
+  const combined = parts.length > 1;
+  const partOf = (l: AmexLine) => parts[l.part ?? 0] ?? statement;
+  const sourceName = (s: AmexStatement) => (s.source === "worldfirst" ? a.worldfirst : "Amex");
+  const tagFor = (l: AmexLine) => (combined ? sourceName(partOf(l)) : undefined);
   const hintFor = new Map(r.hints.map((h) => [h.lineIndex, h.fileNames]));
   const amountHintFor = new Map(r.amountHints.map((h) => [h.lineIndex, h.fileNames]));
   const clean = r.missing.length === 0 && statement.totalsMatch;
 
   async function copyMissing() {
-    const rows = r.missing.map((i) => `${line(i).dateISO}  ${charge(line(i))}  ${line(i).description}`);
-    const source = isWf ? a.worldfirst : "Amex";
-    const text = [a.copyHeader(source, statement.periodStartISO, statement.periodEndISO), ...rows].join("\n");
+    // One block per statement: the WorldFirst list goes to Exelle, the Amex one stays.
+    const blocks = parts
+      .map((p, pi) => {
+        const rows = r.missing
+          .filter((i) => (line(i).part ?? 0) === pi)
+          .map((i) => `${line(i).dateISO}  ${charge(line(i))}  ${line(i).description}`);
+        return rows.length ? [a.copyHeader(sourceName(p), p.periodStartISO, p.periodEndISO), ...rows].join("\n") : "";
+      })
+      .filter(Boolean);
+    const text = blocks.join("\n\n");
     try {
       await navigator.clipboard.writeText(text);
       toast.success(a.copied);
@@ -61,8 +75,7 @@ export function AmexResultsView({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm text-muted-foreground">
-              {a.period(statement.periodStartISO, statement.periodEndISO)}
-              {isWf ? <> · {a.worldfirst}</> : statement.cardEnding && <> · {a.card(statement.cardEnding)}</>}
+              {combined ? a.checkedTogether(parts.map(sourceName).join(" + ")) : <PartLabel s={parts[0]} />}
             </p>
             <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1">
               <Stat n={r.matched.length} label={a.matched} />
@@ -83,20 +96,34 @@ export function AmexResultsView({
 
         <div className="mt-5 space-y-1 border-t border-rule pt-4 text-sm">
           <p className="text-muted-foreground">
-            {a.needReceipt(needReceipt)} · {isWf ? a.notNeededWf(notNeeded) : a.notNeeded(notNeeded)}
+            {a.needReceipt(needReceipt)} ·{" "}
+            {combined
+              ? a.notNeededMixed(notNeeded)
+              : parts[0].source === "worldfirst"
+                ? a.notNeededWf(notNeeded)
+                : a.notNeeded(notNeeded)}
           </p>
-          {isWf ? (
-            <p className="text-muted-foreground">{a.wfRead(statement.lines.length)}</p>
-          ) : statement.totalsMatch ? (
-            <p className="text-muted-foreground">{a.totalCheckOk(money(statement.parsedPurchasesCents, "").trim())}</p>
-          ) : (
-            <p className="font-medium text-status-error">
-              {a.totalCheckBad(
-                money(statement.parsedPurchasesCents, "").trim(),
-                statement.printedPurchasesCents === null ? "?" : money(statement.printedPurchasesCents, "").trim(),
+          {parts.map((p, pi) => (
+            <div key={pi} className={combined ? "pt-1" : undefined}>
+              {combined && (
+                <p className="font-medium">
+                  <PartLabel s={p} />
+                </p>
               )}
-            </p>
-          )}
+              {p.source === "worldfirst" ? (
+                <p className="text-muted-foreground">{a.wfRead(p.lines.length)}</p>
+              ) : p.totalsMatch ? (
+                <p className="text-muted-foreground">{a.totalCheckOk(money(p.parsedPurchasesCents, "").trim())}</p>
+              ) : (
+                <p className="font-medium text-status-error">
+                  {a.totalCheckBad(
+                    money(p.parsedPurchasesCents, "").trim(),
+                    p.printedPurchasesCents === null ? "?" : money(p.printedPurchasesCents, "").trim(),
+                  )}
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       </section>
 
@@ -114,7 +141,7 @@ export function AmexResultsView({
         >
           {r.missing.map((i) => (
             <li key={i} className="px-4 py-3">
-              <ChargeRow l={line(i)} amount={charge(line(i))} />
+              <ChargeRow l={line(i)} amount={charge(line(i))} tag={tagFor(line(i))} />
               {hintFor.has(i) && (
                 <p className="mt-1.5 text-xs text-status-warn">{a.possible(hintFor.get(i)!.join(", "))}</p>
               )}
@@ -132,7 +159,7 @@ export function AmexResultsView({
           tone="warn"
           icon={<FileQuestion className="h-3.5 w-3.5" strokeWidth={2} />}
           count={r.unmatchedReceipts.length}
-          note={a.unmatchedNote}
+          note={combined ? a.unmatchedNoteCombined : a.unmatchedNote}
         >
           {r.unmatchedReceipts.map((rc, i) => (
             <ReceiptRow key={`${rc.fileName}-${i}`} rc={rc} />
@@ -162,7 +189,7 @@ export function AmexResultsView({
             const l = line(m.lineIndex);
             return (
               <li key={m.lineIndex} className="px-4 py-3">
-                <ChargeRow l={l} amount={charge(l)} />
+                <ChargeRow l={l} amount={charge(l)} tag={tagFor(l)} />
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span className="font-mono text-foreground">{m.receipt.fileName}</span>
                   {m.dayDiff !== null && m.dayDiff > 0 && <span>· {a.dayOff(m.dayDiff)}</span>}
@@ -207,11 +234,24 @@ export function AmexResultsView({
   );
 }
 
-function ChargeRow({ l, amount }: { l: AmexLine; amount: string }) {
+function PartLabel({ s }: { s: AmexStatement }) {
+  const a = useLang().t.amex;
+  return (
+    <>
+      {s.source === "worldfirst" ? a.worldfirst : "Amex"} · {a.period(s.periodStartISO, s.periodEndISO)}
+      {s.source !== "worldfirst" && s.cardEnding && <> · {a.card(s.cardEnding)}</>}
+    </>
+  );
+}
+
+function ChargeRow({ l, amount, tag }: { l: AmexLine; amount: string; tag?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
       <span className="min-w-0 truncate text-sm">
         <span className="tabular mr-3 font-mono text-xs text-muted-foreground tabular-nums">{l.dateISO}</span>
+        {tag && (
+          <span className="mr-2 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{tag}</span>
+        )}
         {l.description}
       </span>
       <span className="tabular shrink-0 font-mono text-sm font-medium tabular-nums">{amount}</span>
