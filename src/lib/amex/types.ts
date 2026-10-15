@@ -40,15 +40,29 @@ export interface AmexLine {
   kind: AmexLineKind;
   /** True when a receipt should be on file for this line. */
   needsReceipt: boolean;
+  /**
+   * Which uploaded statement the line came from (index into the list), set
+   * when several statements are checked together (see combine.ts).
+   */
+  part?: number;
 }
 
 export interface AmexStatement {
-  /** Which statement this is: the Amex PDF or a WorldFirst account export (.xlsx). */
-  source: "amex" | "worldfirst";
+  /**
+   * Which statement this is: the Amex PDF, a WorldFirst account export (.xlsx),
+   * or several of them checked together as one (see combine.ts).
+   */
+  source: "amex" | "worldfirst" | "combined";
   /** Fakturadatum (Amex); the export's last day for WorldFirst. */
   statementDateISO: string;
   periodStartISO: string;
   periodEndISO: string;
+  /**
+   * Combined statements only: each part's own period. A receipt belongs to
+   * "another period" only when it falls outside ALL of them, so a gap between
+   * two parts' periods is not treated as covered.
+   */
+  periods?: [string, string][];
   /** Last 5 digits as printed ("Kortnummer som slutar på"). */
   cardEnding: string;
   lines: AmexLine[];

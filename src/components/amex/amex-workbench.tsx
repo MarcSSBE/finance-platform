@@ -43,18 +43,23 @@ async function toReceiptEntries(files: File[]): Promise<ReceiptEntry[]> {
 export function AmexWorkbench() {
   const t = useT();
   const [status, setStatus] = useState<Status>("idle");
-  const [statement, setStatement] = useState<File | null>(null);
+  const [statements, setStatements] = useState<File[]>([]);
   const [receipts, setReceipts] = useState<ReceiptEntry[]>([]);
-  const [result, setResult] = useState<{ statement: AmexStatement; reconciliation: AmexReconciliation } | null>(null);
+  const [result, setResult] = useState<{
+    statement: AmexStatement;
+    statements: AmexStatement[];
+    reconciliation: AmexReconciliation;
+  } | null>(null);
   const [error, setError] = useState("");
 
   async function check() {
-    if (!statement) return;
+    if (statements.length === 0) return;
     setStatus("working");
     setError("");
     try {
       const body = new FormData();
-      body.append("statement", statement);
+      // Amex and WorldFirst together: a receipt filed under either card counts.
+      for (const f of statements) body.append("statement", f);
       // Only the names: the naming convention carries vendor, amount and month.
       body.append("receiptNames", JSON.stringify(receipts.map((r) => r.name)));
       const res = await fetch("/api/amex/reconcile", { method: "POST", body });
@@ -70,14 +75,21 @@ export function AmexWorkbench() {
 
   function reset() {
     setStatus("idle");
-    setStatement(null);
+    setStatements([]);
     setReceipts([]);
     setResult(null);
     setError("");
   }
 
   if (status === "done" && result) {
-    return <AmexResultsView statement={result.statement} reconciliation={result.reconciliation} onReset={reset} />;
+    return (
+      <AmexResultsView
+        statement={result.statement}
+        parts={result.statements ?? [result.statement]}
+        reconciliation={result.reconciliation}
+        onReset={reset}
+      />
+    );
   }
 
   if (status === "working") {
@@ -105,8 +117,18 @@ export function AmexWorkbench() {
         label={t.amex.statementLabel}
         hint={t.amex.statementHint}
         accept=".pdf,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        names={statement ? [statement.name] : []}
-        onFiles={(fs) => setStatement(fs.find((f) => /\.(pdf|xlsx)$/i.test(f.name)) ?? null)}
+        multiple
+        names={statements.map((f) => f.name)}
+        onFiles={(fs) =>
+          setStatements((prev) => {
+            const added = fs.filter((f) => /\.(pdf|xlsx)$/i.test(f.name));
+            // The same file dropped twice is one statement.
+            const key = (f: File) => `${f.name}|${f.size}`;
+            const seen = new Set(prev.map(key));
+            return [...prev, ...added.filter((f) => !seen.has(key(f)))];
+          })
+        }
+        onClear={() => setStatements([])}
         clearLabel={t.amex.clear}
       />
 
@@ -131,10 +153,10 @@ export function AmexWorkbench() {
       </div>
 
       <div className="flex items-center gap-3">
-        <Button onClick={check} disabled={!statement}>
-          {t.amex.check(receipts.length)}
+        <Button onClick={check} disabled={statements.length === 0}>
+          {t.amex.check(receipts.length, statements.length)}
         </Button>
-        {!statement && <span className="text-sm text-muted-foreground">{t.amex.needStatement}</span>}
+        {statements.length === 0 && <span className="text-sm text-muted-foreground">{t.amex.needStatement}</span>}
       </div>
     </div>
   );

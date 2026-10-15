@@ -118,15 +118,22 @@ export function reconcileAmex(
         (r.currency === null || r.currency === l.originalCurrency) &&
         vendorMatches(r.vendor, l.description),
     );
-    const inMonth = pool.filter(({ l }) => monthOffset(l.dateISO, r) === 0);
-    const spill = pool.filter(({ l }) => monthOffset(l.dateISO, r) === 1 && dayOf(l.dateISO) <= SPILL_DAYS);
-    // The 1st-3rd of its own month may hold the PREVIOUS month's final charge.
-    const ownEarly = inMonth.filter(({ l }) => dayOf(l.dateISO) <= SPILL_DAYS);
-    const options = [inMonth, [...inMonth, ...spill], [...inMonth.filter((x) => !ownEarly.includes(x)), ...spill]];
-    for (const set of options) {
-      if (set.length < 2) continue;
-      if (new Set(set.map(({ l }) => l.originalCurrency)).size !== 1) continue;
-      if (set.reduce((a, { l }) => a + l.originalCents, 0) !== r.cents) continue;
+    // One card's receipt: with several statements, each card's charges are
+    // summed on their own, never Amex and WorldFirst together.
+    for (const part of new Set(pool.map(({ l }) => l.part ?? 0))) {
+      const own = pool.filter(({ l }) => (l.part ?? 0) === part);
+      const inMonth = own.filter(({ l }) => monthOffset(l.dateISO, r) === 0);
+      const spill = own.filter(({ l }) => monthOffset(l.dateISO, r) === 1 && dayOf(l.dateISO) <= SPILL_DAYS);
+      // The 1st-3rd of its own month may hold the PREVIOUS month's final charge.
+      const ownEarly = inMonth.filter(({ l }) => dayOf(l.dateISO) <= SPILL_DAYS);
+      const options = [inMonth, [...inMonth, ...spill], [...inMonth.filter((x) => !ownEarly.includes(x)), ...spill]];
+      const set = options.find(
+        (set) =>
+          set.length >= 2 &&
+          new Set(set.map(({ l }) => l.originalCurrency)).size === 1 &&
+          set.reduce((a, { l }) => a + l.originalCents, 0) === r.cents,
+      );
+      if (!set) continue;
       usedReceipt.add(ri);
       for (const { i } of set) {
         usedLine.add(i);
@@ -142,16 +149,19 @@ export function reconcileAmex(
   // fit no charge on this one. A statement runs 3rd to 2nd, so a month-only
   // receipt counts as this statement's only when most of its month is inside
   // the period (an "aug-26" receipt is not this one's just because Aug 1-2 are).
-  const periodStart = toMs(statement.periodStartISO);
-  const periodEnd = toMs(statement.periodEndISO);
+  // With several statements, it must be outside every one of their periods.
+  const periods = (statement.periods ?? [[statement.periodStartISO, statement.periodEndISO]])
+    .map(([a, b]) => [toMs(a), toMs(b)])
+    .filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
   const outsidePeriod: AmexReceipt[] = [];
   const unmatchedReceipts: AmexReceipt[] = [];
   receipts.forEach((r, ri) => {
     if (usedReceipt.has(ri)) return;
     const [from, to] = receiptWindow(r);
-    const overlapDays = (Math.min(to, periodEnd) - Math.max(from, periodStart)) / DAY_MS + 1;
     const windowDays = (to - from) / DAY_MS + 1;
-    const outside = Number.isFinite(periodStart) && Number.isFinite(periodEnd) && overlapDays * 2 < windowDays;
+    const outside =
+      periods.length > 0 &&
+      periods.every(([start, end]) => ((Math.min(to, end) - Math.max(from, start)) / DAY_MS + 1) * 2 < windowDays);
     (outside ? outsidePeriod : unmatchedReceipts).push(r);
   });
 
