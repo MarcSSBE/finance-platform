@@ -130,7 +130,8 @@ check("WF: Anthropic €420,83 matches the EUR charge", wf.lines[wfMatch(/^Anthr
 check("WF: Heroku aug-26 matches 'HEROKU* AUG-...' on Sep 3 (billed-later)", wfMatch(/^Heroku/)?.notes.includes("billed-later") === true);
 check("WF: two Vadoo $150 receipts take their own days", wf.lines[wfMatch(/Sep7/)!.lineIndex].dateISO === "2026-09-07" && wf.lines[wfMatch(/Sep21/)!.lineIndex].dateISO === "2026-09-21");
 check("WF: Upwork $1584 Sep1 takes the Sep 1 charge, not Sep 30", wf.lines[wfMatch(/^Upwork/)!.lineIndex].dateISO === "2026-09-01");
-check("WF: Kalowave vs KALODATA → hint only", wr.hints.some((h) => h.fileNames.includes("Kalowave $129,90 sep-26.pdf")));
+// Confirmed by Veronica 2026-10-22: Kalowave is the company behind Kalodata.
+check("WF: Kalowave matches KALODATA", wr.matched.some((m) => m.receipt.fileName === "Kalowave $129,90 sep-26.pdf"));
 check("WF: transfers and TikTok Ads never listed missing", wr.missing.every((i) => wf.lines[i].kind === "purchase"));
 
 console.log("");

@@ -41,6 +41,16 @@ export function reconcileAmex(
 ): AmexReconciliation {
   const lines = statement.lines;
   const wanted = lines.map((l, i) => ({ l, i })).filter(({ l }) => l.needsReceipt && l.originalCents > 0);
+  // A WorldFirst bank transfer needs no receipt, but she often files the
+  // supplier's invoice for it ("Ships a lot Invoice_14931 $3013,68"): such a
+  // receipt may pair with the transfer, so it does not show as "no charge".
+  // A transfer without one is never listed as missing.
+  const matchable = [
+    ...wanted,
+    ...lines
+      .map((l, i) => ({ l, i }))
+      .filter(({ l }) => l.kind === "transfer" && l.originalCents > 0 && !/^conversion-/i.test(l.description)),
+  ];
 
   interface Candidate {
     lineIndex: number;
@@ -58,7 +68,7 @@ export function reconcileAmex(
   };
 
   receipts.forEach((r, ri) => {
-    for (const { l, i } of wanted) {
+    for (const { l, i } of matchable) {
       const fit = dateFit(r, l, toleranceDays);
       if (fit === false) continue;
       const sameVendor = vendorMatches(r.vendor, l.description);
@@ -167,8 +177,9 @@ export function reconcileAmex(
 
   const missing = wanted.map(({ i }) => i).filter((i) => !usedLine.has(i));
   const unmatchedSet = new Set(unmatchedReceipts);
-  const hintsFrom = (map: Map<number, Set<number>>) =>
-    missing
+  const openTransfers = matchable.map(({ i }) => i).filter((i) => !usedLine.has(i) && !lines[i].needsReceipt);
+  const hintsFrom = (map: Map<number, Set<number>>, among = missing) =>
+    among
       .filter((i) => map.has(i))
       .map((i) => ({
         lineIndex: i,
@@ -185,6 +196,7 @@ export function reconcileAmex(
     unreadableNames,
     hints: hintsFrom(hintMap),
     amountHints: hintsFrom(amountHintMap),
+    transferHints: hintsFrom(hintMap, openTransfers),
   };
 }
 
@@ -243,7 +255,7 @@ function dateFit(
 /** Words that say nothing about who the vendor is. */
 const GENERIC = new Set([
   "ai", "inc", "com", "ltd", "llc", "ab", "bv", "gmbh", "the", "io", "co", "www",
-  "limited", "subscription", "subscr", "invoice", "receipt", "kvitto",
+  "limited", "subscription", "subscr", "invoice", "receipt", "kvitto", "labs",
 ]);
 
 /** Her name for a vendor → how the statement prints it. */
@@ -252,6 +264,11 @@ const ALIASES: Record<string, string[]> = {
   meta: ["facebk"],
   chatgpt: ["openai"],
   sas: ["flysas"],
+  // Confirmed by Veronica 2026-10-22 from the receipts themselves.
+  kalowave: ["kalodata"], // Kalowave Technology sells the Kalodata membership
+  jungle: ["js"], // Jungle Scout's API plan is charged as "JS API SUBSCRIPTION"
+  hector: ["neondigital"], // Hector AI is charged as "RAZ*httpwwwneondigital"
+  antrophics: ["anthropic"], // her spelling of Anthropic
 };
 
 function tokens(s: string): string[] {
@@ -298,7 +315,8 @@ export function vendorMatches(receiptVendor: string, description: string): boole
   return want.some(
     (w) =>
       have.some((h) => tokenMatches(w, h)) ||
-      (ALIASES[w] ?? []).some((a) => have.includes(a)) ||
+      // "RAZ*httpwwwneondigital": a long alias may sit inside a run-together word.
+      (ALIASES[w] ?? []).some((a) => have.includes(a) || (a.length >= 5 && squashed.includes(a))) ||
       (w.length >= 5 && squashed.includes(w)),
   );
 }

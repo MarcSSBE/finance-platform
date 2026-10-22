@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { extractPdfItems } from "../pdf";
 import type { AmexLine, AmexLineKind, AmexStatement } from "./types";
 
 /**
@@ -69,7 +70,8 @@ function transactionDate(reference: string, postedISO: string): string {
 }
 
 function classify(description: string, inCents: number | null, outCents: number | null): AmexLineKind {
-  if (/^(transfer|withdrawal)-/i.test(description)) return "transfer";
+  // A conversion between her own currency accounts is not a purchase either.
+  if (/^(transfer|withdrawal|conversion)-/i.test(description)) return "transfer";
   if (/tik\s*tok\s*ads/i.test(description)) return "tiktok-ads";
   if ((inCents ?? 0) > 0 && !(outCents ?? 0)) return "credit";
   return "purchase";
@@ -112,42 +114,171 @@ export async function parseWorldFirstStatement(
       const posted = toIso(cellText(row.getCell(col.date)));
       if (!posted) continue;
       const [first, ...rest] = cellText(row.getCell(col.description)).split(/\r?\n/);
-      const description = first.replace(/\(\*+\d{4}\)/g, "").replace(/\s+/g, " ").trim();
-      const outCents = parseWfAmount(cellText(row.getCell(col.out)));
-      const inCents = col.in ? parseWfAmount(cellText(row.getCell(col.in))) : null;
-      if (!outCents && !inCents) continue;
-      const currency = cellText(row.getCell(col.currency)).toUpperCase();
-      const kind = classify(description, inCents, outCents);
-      // Money out is the charge; money in (a refund) is stored negative, as on Amex.
-      const cents = outCents ? outCents : -(inCents ?? 0);
-      lines.push({
-        dateISO: transactionDate((rest.join(" ").trim()), posted),
-        processDateISO: posted,
-        description,
-        sekCents: 0,
-        originalCents: cents,
-        originalCurrency: currency,
-        feeSekCents: 0,
-        kind,
-        needsReceipt: kind === "purchase",
-      });
+      const line = toLine(
+        posted,
+        first,
+        rest.join(" ").trim(),
+        col.in ? parseWfAmount(cellText(row.getCell(col.in))) : null,
+        parseWfAmount(cellText(row.getCell(col.out))),
+        cellText(row.getCell(col.currency)).toUpperCase(),
+      );
+      if (line) lines.push(line);
     }
   }
 
-  // Oldest first, like the Amex statement.
-  lines.reverse();
-  const dates = lines.map((l) => l.processDateISO).sort();
-  const period = periodFromName(fileName) ?? [dates[0] ?? "", dates[dates.length - 1] ?? ""];
+  return toStatement(lines, periodFromName(fileName), true);
+}
 
+/** One statement row → a line; null when it moves no money. */
+function toLine(
+  posted: string,
+  rawDescription: string,
+  reference: string,
+  inCents: number | null,
+  outCents: number | null,
+  currency: string,
+): AmexLine | null {
+  if (!outCents && !inCents) return null;
+  const description = rawDescription
+    .replace(/\(\*+\d{4}\)/g, "")
+    .replace(/\s+/g, " ")
+    // Rejoin what the PDF wrapped: "Fulfillment- Box(DE742905010100829621 27)".
+    .replace(/([A-Za-z])- (?=[A-Za-z])/g, "$1-")
+    .replace(/\(([A-Z0-9 ]+)\)/g, (_, inner: string) => `(${inner.replace(/ /g, "")})`)
+    .trim();
+  const kind = classify(description, inCents, outCents);
+  return {
+    dateISO: transactionDate(reference, posted),
+    processDateISO: posted,
+    description,
+    sekCents: 0,
+    // Money out is the charge; money in (a refund) is stored negative, as on Amex.
+    originalCents: outCents ? outCents : -(inCents ?? 0),
+    originalCurrency: currency,
+    feeSekCents: 0,
+    kind,
+    needsReceipt: kind === "purchase",
+  };
+}
+
+/** Rows newest first (as WorldFirst lists them) → the statement, oldest first like Amex. */
+function toStatement(newestFirst: AmexLine[], period: [string, string] | null, totalsMatch: boolean): AmexStatement {
+  const lines = [...newestFirst].reverse();
+  const dates = lines.map((l) => l.processDateISO).sort();
+  const [start, end] = period ?? [dates[0] ?? "", dates[dates.length - 1] ?? ""];
   return {
     source: "worldfirst",
-    statementDateISO: period[1],
-    periodStartISO: period[0],
-    periodEndISO: period[1],
+    statementDateISO: end,
+    periodStartISO: start,
+    periodEndISO: end,
     cardEnding: "",
     lines,
     printedPurchasesCents: null,
     parsedPurchasesCents: 0,
-    totalsMatch: true,
+    totalsMatch,
   };
+}
+
+// ── PDF statement ───────────────────────────────────────────────────────────
+
+/** Is this PDF text a WorldFirst currency-account statement (not an Amex one)? */
+export function isWorldFirstPdfText(text: string): boolean {
+  return /Statement for [A-Z]{3} currency account/.test(text) && /World ?First/i.test(text);
+}
+
+/** "387.50 USD" → [38750, "USD"]. */
+function pdfAmount(s: string): [number, string] | null {
+  const m = s.match(/^(\d[\d,]*(?:\.\d{1,2})?)\s+([A-Z]{3})$/);
+  const cents = m ? parseWfAmount(m[1]) : null;
+  return m && cents !== null ? [cents, m[2]] : null;
+}
+
+/**
+ * The monthly statement PDF WorldFirst issues per currency account ("Statement
+ * for USD currency account"), which Veronica may send instead of the .xlsx
+ * export. Same rows, laid out as a table:
+ *
+ *   DATE         | Description (wrapped)             | IN | OUT        | BALANCE
+ *   30 Aug, 2026 | OPENPHONE SAN / FRANCISCO /       |    | 19.00 USD  | 449978.47 USD
+ *                | USA(************9556) / 2026083…  |    |            |
+ *
+ * The flat text cannot tell IN from OUT (one of them is blank), so rows are
+ * rebuilt from text positions: a row starts at a date in the DATE column and
+ * runs to the next one; IN/OUT is decided by the column header the amount
+ * sits under. The rows are then checked against the printed summary (In and
+ * Out totals, opening + in - out = closing), so a row the layout hid shows as
+ * a totals mismatch instead of a silently missing charge.
+ */
+export async function parseWorldFirstPdf(buffer: ArrayBuffer | Buffer): Promise<AmexStatement> {
+  const items = await extractPdfItems(buffer);
+  const all = items.map((i) => i.str).join("\n");
+  const currency = all.match(/Statement for ([A-Z]{3}) currency account/)?.[1] ?? "";
+  const period = all.match(
+    /Transactions time\s*:\s*(\d{1,2} [A-Za-z]{3}, \d{4})\s+to\s+(\d{1,2} [A-Za-z]{3}, \d{4})/,
+  );
+  const start = period ? toIso(period[1]) : null;
+  const end = period ? toIso(period[2]) : null;
+
+  // Printed summary: the label, then its figure further right on the same line.
+  const summary = (label: string): number | null => {
+    const l = items.find((i) => i.page === 1 && i.str === label);
+    const v = l && items.find((i) => i.page === 1 && Math.abs(i.y - l.y) < 1 && i.x > l.x && pdfAmount(i.str));
+    return v ? pdfAmount(v.str)![0] : null;
+  };
+
+  const rows: AmexLine[] = [];
+  let sumIn = 0;
+  let sumOut = 0;
+  for (const page of [...new Set(items.map((i) => i.page))]) {
+    const own = items.filter((i) => i.page === page);
+    const [date, desc, inH, outH, bal] = ["DATE", "Description", "IN", "OUT", "BALANCE"].map((name) =>
+      own.find((i) => i.str === name),
+    );
+    if (!date || !desc || !inH || !outH || !bal) continue;
+    if (![desc, inH, outH, bal].every((h) => Math.abs(h.y - date.y) < 1)) continue;
+    const below = own.filter((i) => i.y < date.y - 1);
+    const starts = below.filter((i) => i.x < desc.x - 5 && toIso(i.str)).sort((a, b) => b.y - a.y);
+    starts.forEach((s, k) => {
+      const floor = starts[k + 1]?.y ?? -Infinity;
+      // A row's items sit on its first line or below it, above the next row.
+      const cell = (from: number, to: number) =>
+        below.filter((i) => i.y <= s.y + 1 && i.y > floor + 1 && i.x >= from - 5 && i.x < to - 5);
+      const text = cell(desc.x, inH.x)
+        .sort((a, b) => b.y - a.y || a.x - b.x)
+        .map((i) => i.str)
+        .join(" ");
+      const money = (from: number, to: number) => {
+        const found = cell(from, to)
+          .map((i) => pdfAmount(i.str))
+          .filter((a): a is [number, string] => a !== null);
+        return found.length === 1 ? found[0] : null;
+      };
+      const inA = money(inH.x, outH.x);
+      const outA = money(outH.x, bal.x);
+      // The card reference ("20260830162310040345762 03181512") follows the merchant text.
+      const ref = text.match(/\b(20\d{6}\d{8,})\b/);
+      const line = toLine(
+        toIso(s.str)!,
+        ref ? text.slice(0, ref.index) : text,
+        ref ? ref[1] : "",
+        inA?.[0] ?? null,
+        outA?.[0] ?? null,
+        (outA ?? inA)?.[1] ?? currency,
+      );
+      if (!line) return;
+      rows.push(line);
+      sumIn += inA?.[0] ?? 0;
+      sumOut += outA?.[0] ?? 0;
+    });
+  }
+
+  const [open, printedIn, printedOut, close] = ["Opening balance", "In", "Out", "Closing balance"].map(summary);
+  const totalsMatch =
+    printedIn !== null &&
+    printedOut !== null &&
+    sumIn === printedIn &&
+    sumOut === printedOut &&
+    (open === null || close === null || open + printedIn - printedOut === close);
+
+  return { ...toStatement(rows, start && end ? [start, end] : null, totalsMatch), account: currency || undefined };
 }

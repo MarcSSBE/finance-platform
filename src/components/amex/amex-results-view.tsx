@@ -44,10 +44,16 @@ export function AmexResultsView({
   const notNeeded = statement.lines.length - needReceipt;
   const combined = parts.length > 1;
   const partOf = (l: AmexLine) => parts[l.part ?? 0] ?? statement;
-  const sourceName = (s: AmexStatement) => (s.source === "worldfirst" ? a.worldfirst : "Amex");
+  const sourceName = (s: AmexStatement) =>
+    s.source === "worldfirst" ? (s.account ? `${a.worldfirst} ${s.account}` : a.worldfirst) : "Amex";
   const tagFor = (l: AmexLine) => (combined ? sourceName(partOf(l)) : undefined);
   const hintFor = new Map(r.hints.map((h) => [h.lineIndex, h.fileNames]));
   const amountHintFor = new Map(r.amountHints.map((h) => [h.lineIndex, h.fileNames]));
+  // Receipt file name → the bank transfers it might belong to (shown on the receipt).
+  const transferHintFor = new Map<string, string[]>();
+  for (const h of r.transferHints ?? []) {
+    for (const n of h.fileNames) transferHintFor.set(n, [...(transferHintFor.get(n) ?? []), line(h.lineIndex).description]);
+  }
   const clean = r.missing.length === 0 && statement.totalsMatch;
 
   async function copyMissing() {
@@ -110,8 +116,10 @@ export function AmexResultsView({
                   <PartLabel s={p} />
                 </p>
               )}
-              {p.source === "worldfirst" ? (
-                <p className="text-muted-foreground">{a.wfRead(p.lines.length)}</p>
+              {p.source === "worldfirst" && !p.totalsMatch ? (
+                <p className="font-medium text-status-error">{a.wfTotalBad}</p>
+              ) : p.source === "worldfirst" ? (
+                <p className="text-muted-foreground">{p.account ? a.wfReadPdf(p.lines.length) : a.wfRead(p.lines.length)}</p>
               ) : p.totalsMatch ? (
                 <p className="text-muted-foreground">{a.totalCheckOk(money(p.parsedPurchasesCents, "").trim())}</p>
               ) : (
@@ -162,7 +170,11 @@ export function AmexResultsView({
           note={combined ? a.unmatchedNoteCombined : a.unmatchedNote}
         >
           {r.unmatchedReceipts.map((rc, i) => (
-            <ReceiptRow key={`${rc.fileName}-${i}`} rc={rc} />
+            <ReceiptRow
+              key={`${rc.fileName}-${i}`}
+              rc={rc}
+              hint={transferHintFor.has(rc.fileName) ? a.transferHint(transferHintFor.get(rc.fileName)!.join(", ")) : undefined}
+            />
           ))}
         </Bucket>
       )}
@@ -199,6 +211,7 @@ export function AmexResultsView({
                     </span>
                   )}
                   {m.notes.includes("billed-later") && <span>· {a.billedLater}</span>}
+                  {l.kind === "transfer" && <span>· {a.transferMatch}</span>}
                   {m.notes.includes("currency-differs") && (
                     <StatusBadge tone="warn" icon={<TriangleAlert className="h-3 w-3" strokeWidth={2} />}>
                       {a.currencyDiffers(m.receipt.currency ?? a.noCurrency, l.originalCurrency)}
@@ -238,7 +251,8 @@ function PartLabel({ s }: { s: AmexStatement }) {
   const a = useLang().t.amex;
   return (
     <>
-      {s.source === "worldfirst" ? a.worldfirst : "Amex"} · {a.period(s.periodStartISO, s.periodEndISO)}
+      {s.source === "worldfirst" ? (s.account ? `${a.worldfirst} ${s.account}` : a.worldfirst) : "Amex"} ·{" "}
+      {a.period(s.periodStartISO, s.periodEndISO)}
       {s.source !== "worldfirst" && s.cardEnding && <> · {a.card(s.cardEnding)}</>}
     </>
   );
@@ -259,8 +273,14 @@ function ChargeRow({ l, amount, tag }: { l: AmexLine; amount: string; tag?: stri
   );
 }
 
-function ReceiptRow({ rc }: { rc: AmexReceipt }) {
-  return <li className="truncate px-4 py-3 font-mono text-sm">{rc.fileName}</li>;
+function ReceiptRow({ rc, hint }: { rc: AmexReceipt; hint?: string }) {
+  if (!hint) return <li className="truncate px-4 py-3 font-mono text-sm">{rc.fileName}</li>;
+  return (
+    <li className="px-4 py-3">
+      <p className="truncate font-mono text-sm">{rc.fileName}</p>
+      <p className="mt-1.5 text-xs text-status-warn">{hint}</p>
+    </li>
+  );
 }
 
 function Bucket({

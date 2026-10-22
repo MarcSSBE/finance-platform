@@ -3,7 +3,8 @@ import { combineStatements } from "@/lib/amex/combine";
 import { parseAmexStatement } from "@/lib/amex/parse";
 import { parseReceiptName } from "@/lib/amex/naming";
 import { reconcileAmex } from "@/lib/amex/reconcile";
-import { parseWorldFirstStatement } from "@/lib/amex/worldfirst";
+import { isWorldFirstPdfText, parseWorldFirstPdf, parseWorldFirstStatement } from "@/lib/amex/worldfirst";
+import { extractPdfText } from "@/lib/pdf";
 import type { AmexReceipt, AmexStatement } from "@/lib/amex/types";
 
 export const runtime = "nodejs";
@@ -11,11 +12,13 @@ export const maxDuration = 60;
 
 const MAX_STATEMENT_BYTES = 10 * 1024 * 1024;
 const MAX_RECEIPTS = 2000;
-const MAX_STATEMENTS = 6;
+// Amex + WorldFirst, whose statement PDFs come one per currency account.
+const MAX_STATEMENTS = 8;
 
 /**
  * Check statements against the receipts Veronica has: the Amex statement PDF
- * and/or a WorldFirst account export (.xlsx). Several statements are checked
+ * and/or WorldFirst (the account export .xlsx, or its statement PDFs, one per
+ * currency account). Several statements are checked
  * together (she files a receipt under either card), so a receipt is "no
  * charge" only when no statement has it. Statements are parsed in code;
  * receipts are known only by their file names (her naming
@@ -50,12 +53,19 @@ export async function POST(req: Request) {
     for (const file of statementFiles) {
       const bytes = Buffer.from(await file.arrayBuffer());
       const isExcel = /\.xlsx$/i.test(file.name);
-      const parsed = isExcel ? await parseWorldFirstStatement(bytes, file.name) : await parseAmexStatement(bytes);
+      const isWfPdf = !isExcel && isWorldFirstPdfText(await extractPdfText(bytes));
+      const parsed = isExcel
+        ? await parseWorldFirstStatement(bytes, file.name)
+        : isWfPdf
+          ? await parseWorldFirstPdf(bytes)
+          : await parseAmexStatement(bytes);
       if (parsed.lines.length === 0) {
         return NextResponse.json(
           {
             error: isExcel
               ? `No transactions were found in ${file.name}. Is this the WorldFirst statement export?`
+              : isWfPdf
+                ? `No transactions were found in ${file.name}.`
               : `No transactions were found in ${file.name}. Is this the Amex statement PDF?`,
           },
           { status: 422 },
