@@ -24,16 +24,17 @@ const en = {
   tabs: { income: "Income", ads: "Ads invoices", amazon: "Amazon", amex: "Amex receipts" },
   income: {
     title: "Income summary",
-    desc: "Upload the WorldFirst income export and get the correct monthly total, then a clean workbook with the total written in.",
+    desc: "Upload the WorldFirst income export and get the correct monthly total (or a WorldFirst statement to total its payouts), then a clean workbook with the total written in.",
     dropTitle: "Drop the WorldFirst export here",
     dropOr: "or click to choose the .xlsx file you downloaded",
-    dropHint: "We read the “Amount entered” column and total it for you",
+    dropHint: "We total the “Amount entered” column, or the “Out” column of a statement",
     exportNote:
       "Export from WorldFirst filtered to TikTok Inc. income, choose XLS detail. The amounts come in as text, so Excel’s SUM shows 0. This reads them correctly and gives you the real total.",
     reading: (name: string) => `Reading ${name}…`,
-    readingSub: "Coercing the text amounts to numbers and totalling column D.",
+    readingSub: "Coercing the text amounts to numbers and totalling them.",
     errTitle: "We couldn’t read that file",
     totalIncome: "Total income",
+    totalPayouts: "Total payouts",
     countedFrom: (n: number, col: string, header: string) =>
       `${n} rows counted from column ${col} (“${header}”), read from the text values Excel could not add.`,
     everyRowCounted: "Every row counted",
@@ -237,16 +238,17 @@ const sv: Messages = {
   tabs: { income: "Intäkter", ads: "Annonsfakturor", amazon: "Amazon", amex: "Amex-kvitton" },
   income: {
     title: "Intäktssammanställning",
-    desc: "Ladda upp WorldFirst-intäktsexporten och få den korrekta månadssumman, och sedan en ren arbetsbok med summan ifylld.",
+    desc: "Ladda upp WorldFirst-intäktsexporten och få den korrekta månadssumman (eller ett WorldFirst-kontoutdrag för att summera utbetalningarna), och sedan en ren arbetsbok med summan ifylld.",
     dropTitle: "Släpp WorldFirst-exporten här",
     dropOr: "eller klicka för att välja .xlsx-filen du laddade ner",
-    dropHint: "Vi läser kolumnen “Amount entered” och summerar den åt dig",
+    dropHint: "Vi summerar kolumnen “Amount entered”, eller kolumnen “Out” i ett kontoutdrag",
     exportNote:
       "Exportera från WorldFirst filtrerat på TikTok Inc.-intäkter, välj XLS-detalj. Beloppen kommer in som text, så Excels SUMMA visar 0. Det här läser dem korrekt och ger dig den verkliga summan.",
     reading: (name: string) => `Läser ${name}…`,
-    readingSub: "Omvandlar textbeloppen till tal och summerar kolumn D.",
+    readingSub: "Omvandlar textbeloppen till tal och summerar dem.",
     errTitle: "Vi kunde inte läsa den filen",
     totalIncome: "Totala intäkter",
+    totalPayouts: "Totala utbetalningar",
     countedFrom: (n: number, col: string, header: string) =>
       `${n} rader räknade från kolumn ${col} (“${header}”), lästa från textvärdena som Excel inte kunde summera.`,
     everyRowCounted: "Alla rader räknade",
