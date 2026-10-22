@@ -63,6 +63,11 @@ export interface AmexStatement {
    * two parts' periods is not treated as covered.
    */
   periods?: [string, string][];
+  /**
+   * WorldFirst statement PDF only: the currency account it covers ("USD").
+   * WorldFirst issues one PDF per currency, so this tells the parts apart.
+   */
+  account?: string;
   /** Last 5 digits as printed ("Kortnummer som slutar på"). */
   cardEnding: string;
   lines: AmexLine[];
@@ -137,4 +142,10 @@ export interface AmexReconciliation {
    * part-payment can be spotted. lineIndex → file names.
    */
   amountHints: { lineIndex: number; fileNames: string[] }[];
+  /**
+   * A receipt with no charge whose amount and date fit a bank transfer under
+   * another name ("Noons Memes $387,50" ↔ "Transfer-Nantawan Sapsakul"). A
+   * transfer needs no receipt, so this is shown on the receipt, never paired.
+   */
+  transferHints: { lineIndex: number; fileNames: string[] }[];
 }

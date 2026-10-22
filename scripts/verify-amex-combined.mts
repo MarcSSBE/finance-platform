@@ -109,9 +109,10 @@ check("alone, the Amex run lists WorldFirst receipts (Anthropic, Vadoo x2) as 'n
   ["Anthropic €420,83 sep-26.pdf", "Vadoo $150 Sep7-26.pdf", "Vadoo $150 Sep21-26.pdf"].every((n) => amexNoCharge.has(n)));
 check("together, 'no charge' = only receipts with no charge on EITHER card",
   rc.unmatchedReceipts.map((r) => r.fileName).sort().join("|") ===
-    ["Channel $49 sep-26.pdf", "Heroku $532,10 sep-26.pdf", "Kalowave $129,90 sep-26.pdf", "Twillio $90,10 sep-26.pdf"].sort().join("|"));
-check("Kalowave vs KALODATA still a hint, on the WorldFirst line",
-  rc.hints.some((h) => h.fileNames.includes("Kalowave $129,90 sep-26.pdf") && line(h.lineIndex).part === 1));
+    ["Channel $49 sep-26.pdf", "Heroku $532,10 sep-26.pdf", "Twillio $90,10 sep-26.pdf"].sort().join("|"));
+// Kalowave = KALODATA, confirmed by Veronica 2026-10-22 (was only a hint before).
+check("Kalowave matches KALODATA, on the WorldFirst line",
+  rc.matched.some((m) => m.receipt.fileName === "Kalowave $129,90 sep-26.pdf" && line(m.lineIndex).part === 1));
 check("Heroku aug-26 still billed-later on WorldFirst",
   rc.matched.find((m) => m.receipt.fileName === "Heroku $327,64 aug-26.pdf")?.notes.includes("billed-later") === true);
 check("no receipt used twice, no charge matched twice",

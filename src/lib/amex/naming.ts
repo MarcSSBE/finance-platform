@@ -96,7 +96,18 @@ export function parseReceiptName(fileName: string): ParsedReceiptName | null {
     .replace(/_/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/\s+BE$/, "");
+    .replace(/\s+BE$/, "")
+    // A worked sum ends in the amount paid: "FUL-BOX $909,72-$325,40=$584,32".
+    .replace(/(?:[$€£]?\d[\d.,]*\s*[-+]\s*)+[$€£]?\d[\d.,]*\s*=\s*([$€£]?\d[\d.,]*)/, "$1")
+    // Amount after the date, the date perhaps a range of months:
+    // "HMRC GB maj- juli-26 £355,92" → "HMRC GB £355,92 juli-26" (the last month).
+    .replace(
+      /^(.+?)\s+(?:([A-Za-zåäöÅÄÖ]{3,4})\s*-\s*)?([A-Za-zåäöÅÄÖ]{3,4}\s*-\s*\d{2})\s+([$€£]\d[\d.,]*|\d[\d.,]*\s*kr)$/,
+      (all, vendor: string, from: string | undefined, to: string, amount: string) =>
+        (from === undefined || monthIndex(from) !== null) && monthIndex(to.replace(/[\s-]+\d{2}$/, "")) !== null
+          ? `${vendor} ${amount} ${to}`
+          : all,
+    );
   const m = base.match(NAME_RE);
   const l = m ? null : base.match(LONG_DATE_RE);
   if (!m && !l) return null;
