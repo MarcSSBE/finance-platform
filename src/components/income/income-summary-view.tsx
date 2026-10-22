@@ -45,7 +45,7 @@ export function IncomeSummaryView({
       <section className="rounded-lg border border-rule bg-card">
         <div className="flex flex-wrap items-start justify-between gap-4 p-6 sm:p-8">
           <div className="min-w-0">
-            <p className="text-sm text-muted-foreground">{t.income.totalIncome}</p>
+            <p className="text-sm text-muted-foreground">{summary.kind === "payouts" ? t.income.totalPayouts : t.income.totalIncome}</p>
             <div className="mt-2 flex items-baseline gap-3">
               <span className="tabular font-mono text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl">
                 {primary ? formatCents(primary.cents) : "0.00"}

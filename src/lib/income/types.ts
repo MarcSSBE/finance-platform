@@ -40,6 +40,8 @@ export interface CurrencyTotal {
 /** The complete, deterministic result of parsing one WorldFirst export. */
 export interface IncomeSummary {
   fileName: string;
+  /** "payouts" when the file is a WorldFirst statement totalled on its "Out" column. */
+  kind: "income" | "payouts";
   /** The column letter used for amounts (default "D" = "Amount entered"). */
   amountColumn: string;
   /** The header text found for the amount column. */

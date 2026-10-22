@@ -85,9 +85,28 @@ export async function parseIncomeWorkbook(
   let amountHeader = "";
   let inferred = false;
 
+  // WorldFirst account statements ("Date, Description, In, Out, Balance, …")
+  // put money received in "In" and payouts in "Out". Total whichever side has
+  // amounts, preferring "Out" (payouts) when both do.
+  const inCol = headers.find((h) => h.text.toLowerCase() === "in");
+  const outCol = headers.find((h) => h.text.toLowerCase() === "out");
+  let kind: IncomeSummary["kind"] = "income";
+
   if (options.amountColumn) {
     amountColIndex = letterToColumn(options.amountColumn);
     amountHeader = headers.find((h) => h.index === amountColIndex)?.text ?? "";
+  } else if (inCol && outCol) {
+    const hasAmounts = (col: number) => {
+      for (let r = 2; r <= sheet.rowCount; r++) {
+        if (parseAmountToCents(cellText(sheet.getRow(r).getCell(col)))) return true;
+      }
+      return false;
+    };
+    const useOut = hasAmounts(outCol.index) || !hasAmounts(inCol.index);
+    const pick = useOut ? outCol : inCol;
+    amountColIndex = pick.index;
+    amountHeader = pick.text;
+    kind = useOut ? "payouts" : "income";
   } else {
     for (const alias of HEADER_ALIASES) {
       const match = headers.find((h) => h.text.toLowerCase() === alias);
@@ -134,12 +153,16 @@ export async function parseIncomeWorkbook(
     const row = sheet.getRow(r);
     const rawAmount = cellText(row.getCell(amountColIndex));
     const type = typeCol ? cellText(row.getCell(typeCol)) : "";
-    const description = descCol ? cellText(row.getCell(descCol)) : "";
+    // Statement descriptions carry the card reference on a second line.
+    const description = descCol ? cellText(row.getCell(descCol)).split(/\r?\n/)[0].trim() : "";
     const currency = (currencyCol ? cellText(row.getCell(currencyCol)) : "") || "—";
 
     // A truly empty row (no amount and no context) is not a skipped row, just spacing.
     const rowIsBlank = rawAmount === "" && type === "" && description === "";
     if (rowIsBlank) continue;
+    // In a statement, a row with nothing on the chosen side belongs to the
+    // other side (e.g. an incoming credit while totalling payouts): not counted, not an anomaly.
+    if (rawAmount === "" && inCol && outCol && !options.amountColumn) continue;
 
     totalRows++;
 
@@ -176,6 +199,7 @@ export async function parseIncomeWorkbook(
 
   return {
     fileName: options.fileName ?? "",
+    kind,
     amountColumn: columnLetter(amountColIndex),
     amountHeader,
     amountColumnInferred: inferred,
