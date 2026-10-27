@@ -269,6 +269,9 @@ const ALIASES: Record<string, string[]> = {
   jungle: ["js"], // Jungle Scout's API plan is charged as "JS API SUBSCRIPTION"
   hector: ["neondigital"], // Hector AI is charged as "RAZ*httpwwwneondigital"
   antrophics: ["anthropic"], // her spelling of Anthropic
+  // From the invoice itself (2026-10-27): "Noons Memes" invoices are issued by
+  // Nantawan Sapsakul and paid by WorldFirst transfer to her.
+  noons: ["nantawan"],
 };
 
 function tokens(s: string): string[] {

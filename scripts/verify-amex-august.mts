@@ -8,11 +8,11 @@
  *     summary (and opening + in - out = closing).
  *   - Her August WorldFirst receipt folder (32 receipts) against the Aug Amex
  *     statement (09-02) + the four PDFs together. Checked by hand against the
- *     PDFs first: 26 matched, of which 9 are supplier invoices paid by bank
+ *     PDFs first: 27 matched, of which 10 are supplier invoices paid by bank
  *     transfer (Ships a Lot x4, Delgate, Fulfillment-Box x2, Kings Park, Shay
- *     Diaz). Left: Blotato $20 (charge $29.00) and MongoDB $223,98 (charge
- *     $222.45) as amount hints, Heroku Aug01 (charged in Sep), Noons Memes
- *     (paid as "Transfer-Nantawan Sapsakul", a hint only), the Uflex refund
+ *     Diaz, Noons Memes = "Transfer-Nantawan Sapsakul", the issuer on her
+ *     invoice). Left: Blotato $20 (charge $29.00) and MongoDB $223,98 (charge
+ *     $222.45) as amount hints, Heroku Aug01 (charged in Sep), the Uflex refund
  *     (money in, not a charge), HMRC May-July (a July bill).
  *   - Her answers on the July round: Kalowave = KALODATA, Jungle Scout =
  *     "JS API SUBSCRIPTION", Hector AI = "RAZ*httpwwwneondigital", Antrophics =
@@ -101,25 +101,25 @@ const lineOf = (i: number) => aug.lines[i];
 const matchOf = (re: RegExp) => ra.matched.filter((m) => re.test(m.receipt.fileName));
 console.log(`August: ${ra.matched.length} matched / ${ra.missing.length} missing / ${ra.unmatchedReceipts.length} no charge / ${ra.outsidePeriod.length} other period`);
 
-check("26 matched, every one on a WorldFirst line (none on Amex)", ra.matched.length === 26 && ra.matched.every((m) => (lineOf(m.lineIndex).part ?? 0) > 0));
+check("27 matched, every one on a WorldFirst line (none on Amex)", ra.matched.length === 27 && ra.matched.every((m) => (lineOf(m.lineIndex).part ?? 0) > 0));
 check("every match has equal amount", ra.matched.every((m) => m.receipt.cents === lineOf(m.lineIndex).originalCents));
-check("9 supplier invoices matched to their bank transfer",
+check("10 supplier invoices matched to their bank transfer",
   ra.matched.filter((m) => lineOf(m.lineIndex).kind === "transfer").map((m) => m.receipt.vendor.split(" ")[0]).sort().join() ===
-    "Delgate,Dollar,Dollar,Dollar,FUL-BOX,FULF-BOX-2026-1689,KingsPark,Shay,Ships");
+    "Delgate,Dollar,Dollar,Dollar,FUL-BOX,FULF-BOX-2026-1689,KingsPark,Noons,Shay,Ships");
 check("Ships a Lot: each weekly invoice takes its own transfer (10, 17, 21, 26 Aug)",
   ["14725", "14796", "14862", "14931"].map((n) => lineOf(matchOf(new RegExp(n))[0]?.lineIndex ?? -1)?.dateISO).join() ===
     "2026-08-10,2026-08-17,2026-08-21,2026-08-26");
 check("FUL-BOX named '$' but paid in EUR is flagged", matchOf(/^FUL-BOX/)[0]?.notes.includes("currency-differs") === true);
 check("Anthropic named '$', charged EUR: both matched and flagged",
   matchOf(/^Anthropic/).length === 2 && matchOf(/^Anthropic/).every((m) => m.notes.includes("currency-differs")));
-check("'no charge' is exactly Blotato, Heroku Aug01, MongoDB, Noons Memes, Uflex",
-  ra.unmatchedReceipts.map((r) => r.vendor.split(" ")[0]).sort().join() === "Blotato,Heroku,MongoDB,Noons,Återbet");
+check("'no charge' is exactly Blotato, Heroku Aug01, MongoDB, Uflex",
+  ra.unmatchedReceipts.map((r) => r.vendor.split(" ")[0]).sort().join() === "Blotato,Heroku,MongoDB,Återbet");
 check("Blotato $20 vs charge $29.00 and MongoDB $223,98 vs $222.45 → amount hints",
   ra.amountHints.map((h) => `${lineOf(h.lineIndex).originalCents}:${h.fileNames.join()}`).sort().join("|") ===
     "22245:MongoDB $223,98 aug-26.pdf|2900:Blotato $20 aug-26.pdf");
-check("Noons Memes $387,50 → hint on the transfer to Nantawan Sapsakul, never paired",
-  ra.transferHints.length === 1 && lineOf(ra.transferHints[0].lineIndex).description.startsWith("Transfer-Nantawan Sapsakul") &&
-    ra.transferHints[0].fileNames[0].startsWith("Noons Memes"));
+check("Noons Memes $387,50 ↔ the 31 Aug transfer to Nantawan Sapsakul (alias), no hints left",
+  lineOf(matchOf(/^Noons Memes/)[0]?.lineIndex ?? -1)?.description.startsWith("Transfer-Nantawan Sapsakul") === true &&
+    lineOf(matchOf(/^Noons Memes/)[0].lineIndex).dateISO === "2026-08-31" && ra.transferHints.length === 0);
 check("HMRC (a July bill) set aside as another period's", ra.outsidePeriod.map((r) => r.vendor).join() === "HMRC GB");
 check("transfers are never listed missing", ra.missing.every((i) => lineOf(i).kind === "purchase"));
 check("WorldFirst charges still missing a receipt: USD 18 + EUR 1 (Legitify)",
