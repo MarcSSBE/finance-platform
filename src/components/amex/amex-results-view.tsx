@@ -119,7 +119,13 @@ export function AmexResultsView({
               {p.source === "worldfirst" && !p.totalsMatch ? (
                 <p className="font-medium text-status-error">{a.wfTotalBad}</p>
               ) : p.source === "worldfirst" ? (
-                <p className="text-muted-foreground">{p.account ? a.wfReadPdf(p.lines.length) : a.wfRead(p.lines.length)}</p>
+                <p className="text-muted-foreground">
+                  {p.account
+                    ? a.wfReadPdf(p.lines.length)
+                    : p.fromPdf
+                      ? a.wfReadPdfMulti(p.lines.length)
+                      : a.wfRead(p.lines.length)}
+                </p>
               ) : p.totalsMatch ? (
                 <p className="text-muted-foreground">{a.totalCheckOk(money(p.parsedPurchasesCents, "").trim())}</p>
               ) : (

@@ -140,7 +140,8 @@ function toLine(
 ): AmexLine | null {
   if (!outCents && !inCents) return null;
   const description = rawDescription
-    .replace(/\(\*+\d{4}\)/g, "")
+    // Card number: "(************9556)", or "(52737559****9556)" on the multi-currency statement.
+    .replace(/\(\d*\*+\d{4}\)/g, "")
     .replace(/\s+/g, " ")
     // Rejoin what the PDF wrapped: "Fulfillment- Box(DE742905010100829621 27)".
     .replace(/([A-Za-z])- (?=[A-Za-z])/g, "$1-")
@@ -181,9 +182,32 @@ function toStatement(newestFirst: AmexLine[], period: [string, string] | null, t
 
 // ── PDF statement ───────────────────────────────────────────────────────────
 
-/** Is this PDF text a WorldFirst currency-account statement (not an Amex one)? */
+/** Is this PDF text a WorldFirst statement (one currency account or the multi-currency one, not Amex)? */
 export function isWorldFirstPdfText(text: string): boolean {
-  return /Statement for [A-Z]{3} currency account/.test(text) && /World ?First/i.test(text);
+  return /Statement for ([A-Z]{3}|Multi-currency) (currency )?account/i.test(text) && /World ?First/i.test(text);
+}
+
+/**
+ * Pure: does every row agree with the printed running balance? Rows are given
+ * oldest first; per currency, previous balance + in - out must equal the row's
+ * balance. The first row of each currency has nothing before it to check
+ * against. Returns the rows (by index) that break the chain.
+ */
+export function balanceChainBreaks(
+  rows: { currency: string; inCents: number; outCents: number; balanceCents: number | null }[],
+): number[] {
+  const last: Record<string, number> = {};
+  const breaks: number[] = [];
+  rows.forEach((r, i) => {
+    if (r.balanceCents === null) {
+      breaks.push(i);
+      return;
+    }
+    const prev = last[r.currency];
+    if (prev !== undefined && prev + r.inCents - r.outCents !== r.balanceCents) breaks.push(i);
+    last[r.currency] = r.balanceCents;
+  });
+  return breaks;
 }
 
 /** "387.50 USD" → [38750, "USD"]. */
@@ -195,8 +219,9 @@ function pdfAmount(s: string): [number, string] | null {
 
 /**
  * The monthly statement PDF WorldFirst issues per currency account ("Statement
- * for USD currency account"), which Veronica may send instead of the .xlsx
- * export. Same rows, laid out as a table:
+ * for USD currency account"), or for all of them at once ("Statement for
+ * Multi-currency account", Sep/Oct 2026), which Veronica may send instead of
+ * the .xlsx export. Same rows, laid out as a table:
  *
  *   DATE         | Description (wrapped)             | IN | OUT        | BALANCE
  *   30 Aug, 2026 | OPENPHONE SAN / FRANCISCO /       |    | 19.00 USD  | 449978.47 USD
@@ -205,9 +230,12 @@ function pdfAmount(s: string): [number, string] | null {
  * The flat text cannot tell IN from OUT (one of them is blank), so rows are
  * rebuilt from text positions: a row starts at a date in the DATE column and
  * runs to the next one; IN/OUT is decided by the column header the amount
- * sits under. The rows are then checked against the printed summary (In and
- * Out totals, opening + in - out = closing), so a row the layout hid shows as
- * a totals mismatch instead of a silently missing charge.
+ * sits under. Every row is checked against the printed running BALANCE (per
+ * currency: previous balance + in - out = balance), and a one-currency
+ * statement also against its printed summary (In and Out totals, opening + in
+ * - out = closing; the multi-currency one prints no summary). So a row the
+ * layout hid or misread shows as a totals mismatch instead of a silently
+ * missing charge.
  */
 export async function parseWorldFirstPdf(buffer: ArrayBuffer | Buffer): Promise<AmexStatement> {
   const items = await extractPdfItems(buffer);
@@ -227,6 +255,7 @@ export async function parseWorldFirstPdf(buffer: ArrayBuffer | Buffer): Promise<
   };
 
   const rows: AmexLine[] = [];
+  const chain: { currency: string; inCents: number; outCents: number; balanceCents: number | null }[] = [];
   let sumIn = 0;
   let sumOut = 0;
   for (const page of [...new Set(items.map((i) => i.page))]) {
@@ -255,6 +284,7 @@ export async function parseWorldFirstPdf(buffer: ArrayBuffer | Buffer): Promise<
       };
       const inA = money(inH.x, outH.x);
       const outA = money(outH.x, bal.x);
+      const balA = money(bal.x, Infinity);
       // The card reference ("20260830162310040345762 03181512") follows the merchant text.
       const ref = text.match(/\b(20\d{6}\d{8,})\b/);
       const line = toLine(
@@ -267,18 +297,33 @@ export async function parseWorldFirstPdf(buffer: ArrayBuffer | Buffer): Promise<
       );
       if (!line) return;
       rows.push(line);
+      chain.push({
+        currency: line.originalCurrency,
+        inCents: inA?.[0] ?? 0,
+        outCents: outA?.[0] ?? 0,
+        // A balance in another currency than the row's amount would be a misread.
+        balanceCents: balA && balA[1] === line.originalCurrency ? balA[0] : null,
+      });
       sumIn += inA?.[0] ?? 0;
       sumOut += outA?.[0] ?? 0;
     });
   }
 
+  // Rows were read newest first (as printed); the chain runs oldest first.
+  const chainOk = rows.length > 0 && balanceChainBreaks([...chain].reverse()).length === 0;
   const [open, printedIn, printedOut, close] = ["Opening balance", "In", "Out", "Closing balance"].map(summary);
-  const totalsMatch =
-    printedIn !== null &&
-    printedOut !== null &&
-    sumIn === printedIn &&
-    sumOut === printedOut &&
-    (open === null || close === null || open + printedIn - printedOut === close);
+  const totalsMatch = currency
+    ? chainOk &&
+      printedIn !== null &&
+      printedOut !== null &&
+      sumIn === printedIn &&
+      sumOut === printedOut &&
+      (open === null || close === null || open + printedIn - printedOut === close)
+    : chainOk;
 
-  return { ...toStatement(rows, start && end ? [start, end] : null, totalsMatch), account: currency || undefined };
+  return {
+    ...toStatement(rows, start && end ? [start, end] : null, totalsMatch),
+    account: currency || undefined,
+    fromPdf: true,
+  };
 }
