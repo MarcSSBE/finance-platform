@@ -68,6 +68,8 @@ export interface AmexStatement {
    * WorldFirst issues one PDF per currency, so this tells the parts apart.
    */
   account?: string;
+  /** WorldFirst statement PDF (one currency or the multi-currency one), not the .xlsx export. */
+  fromPdf?: boolean;
   /** Last 5 digits as printed ("Kortnummer som slutar på"). */
   cardEnding: string;
   lines: AmexLine[];
