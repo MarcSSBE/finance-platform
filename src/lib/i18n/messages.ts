@@ -225,6 +225,25 @@ const en = {
     copyFailed: "Could not copy, select the list instead.",
     copyHeader: (source: string, from: string, to: string) => `${source} receipts missing, statement ${from} to ${to}:`,
   },
+  onePdf: {
+    title: "One PDF of all receipts",
+    desc: "For Fortnox, which takes one file at a time: choose the receipts folder as downloaded from Google Drive (the .zip) or the receipt files. They are put in date order (from the file names) into one PDF, with a contents page. Everything happens in your browser; the files are not uploaded.",
+    choose: "Choose the .zip or receipt files",
+    working: "Combining…",
+    nameLabel: "File name",
+    defaultTitle: "Amex receipts",
+    contentsPage: "Add a contents page",
+    noFiles: "No files were found.",
+    nothingAdded: "None of the files could be added (see the list).",
+    done: (files: number, pages: number) => `${files} receipt${files === 1 ? "" : "s"} in one PDF, ${pages} pages. Downloaded.`,
+    skippedTitle: (n: number) => `${n} file${n === 1 ? " was" : "s were"} NOT included, add ${n === 1 ? "it" : "them"} by hand:`,
+    reasons: {
+      encrypted: "password-protected PDF",
+      unreadable: "could not be read",
+      empty: "PDF has no pages",
+      type: "not a PDF or image",
+    },
+  },
 };
 
 export type Messages = typeof en;
@@ -443,6 +462,25 @@ const sv: Messages = {
     copied: "Listan kopierad",
     copyFailed: "Kunde inte kopiera, markera listan i stället.",
     copyHeader: (source: string, from: string, to: string) => `${source}-kvitton som saknas, period ${from} till ${to}:`,
+  },
+  onePdf: {
+    title: "En PDF med alla kvitton",
+    desc: "För Fortnox, som tar en fil i taget: välj kvittomappen som du laddat ner från Google Drive (.zip) eller kvittofilerna. De läggs i datumordning (från filnamnen) i en PDF, med en innehållssida. Allt sker i din webbläsare; filerna laddas inte upp.",
+    choose: "Välj .zip eller kvittofiler",
+    working: "Slår ihop…",
+    nameLabel: "Filnamn",
+    defaultTitle: "Amex-kvitton",
+    contentsPage: "Lägg till en innehållssida",
+    noFiles: "Inga filer hittades.",
+    nothingAdded: "Ingen av filerna kunde läggas till (se listan).",
+    done: (files: number, pages: number) => `${files} kvitto${files === 1 ? "" : "n"} i en PDF, ${pages} sidor. Nedladdad.`,
+    skippedTitle: (n: number) => `${n} ${n === 1 ? "fil kom" : "filer kom"} INTE med, lägg till ${n === 1 ? "den" : "dem"} för hand:`,
+    reasons: {
+      encrypted: "lösenordsskyddad PDF",
+      unreadable: "kunde inte läsas",
+      empty: "PDF:en har inga sidor",
+      type: "inte en PDF eller bild",
+    },
   },
 };
 
