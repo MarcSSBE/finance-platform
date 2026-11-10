@@ -9,6 +9,9 @@ import JSZip from "jszip";
 export interface RawPdf {
   name: string;
   bytes: Buffer;
+  /** Full path inside the ZIP (e.g. "Amazon/DE/Statement View.pdf"), or the file name for a loose PDF.
+   *  Payout statements do not print their country, so it comes from the folder (Veronica 2026-11-10). */
+  path: string;
 }
 
 /**
@@ -27,13 +30,13 @@ export async function expandToPdfs(files: File[], maxBytes: number): Promise<Raw
         for (const entry of Object.values(zip.files)) {
           if (entry.dir || !/\.pdf$/i.test(entry.name)) continue;
           const bytes = Buffer.from(await entry.async("nodebuffer"));
-          out.push({ name: entry.name.split("/").pop() || entry.name, bytes });
+          out.push({ name: entry.name.split("/").pop() || entry.name, bytes, path: entry.name });
         }
       } catch {
         // A corrupt ZIP is skipped rather than failing the whole batch.
       }
     } else if (/\.pdf$/i.test(f.name)) {
-      out.push({ name: f.name, bytes: buf });
+      out.push({ name: f.name, bytes: buf, path: f.name });
     }
   }
   return out;

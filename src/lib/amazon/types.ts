@@ -20,6 +20,7 @@ export type AmazonDocType =
   | "merchant-credit-note" // credit note against merchant/selling fees
   | "fba-credit-note" // credit note against fulfillment fees
   | "epr-service-invoice" // EPR "pay on behalf" service
+  | "payment-statement" // payout "Payment statement" (Seller Central Statement View), not a VAT document
   | "other";
 
 /** One parsed Amazon fee invoice plus its proposed filing name + Drive path. */
@@ -38,6 +39,8 @@ export interface AmazonInvoice {
   dateISO: string;
   periodStartISO?: string;
   periodEndISO?: string;
+  /** Payout statements only: the date Amazon sent the money (drives the filing month). */
+  transferDateISO?: string;
   /** Invoice currency code, e.g. "EUR". */
   currency: string;
   /** Net (ex-VAT), VAT, and grand total (incl. VAT) in integer cents. */
@@ -66,6 +69,8 @@ export interface AmazonBatchResult {
   invoices: AmazonInvoice[];
   /** Files that could not be read, surfaced rather than silently dropped. */
   unreadable: AmazonInvoice[];
-  /** Deterministic totals per currency across the readable invoices. */
+  /** Deterministic totals per currency across the readable fee invoices (payout statements excluded). */
   totalsByCurrency: { currency: string; totalCents: number; count: number }[];
+  /** Payout statements are money IN, never added to the fee totals: their own totals per currency. */
+  payoutTotalsByCurrency: { currency: string; totalCents: number; count: number }[];
 }

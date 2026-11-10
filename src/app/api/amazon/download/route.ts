@@ -26,8 +26,11 @@ export async function POST(req: Request) {
     const zip = new JSZip();
     const usedPaths = new Set<string>();
 
-    for (const pdf of pdfs) {
-      const parsed = await parseAmazonInvoice(pdf.bytes, pdf.name);
+    // Parsed in parallel: a payout statement is read from its page image (seconds each), so one-by-one could pass
+    // the 60 s function limit on a big batch. Names are still assigned in upload order below.
+    const all = await Promise.all(pdfs.map((p) => parseAmazonInvoice(p.bytes, p.name, p.path)));
+    for (const [i, pdf] of pdfs.entries()) {
+      const parsed = all[i];
       if (parsed.error) {
         zip.folder("_unreadable")!.file(pdf.name, pdf.bytes);
         continue;

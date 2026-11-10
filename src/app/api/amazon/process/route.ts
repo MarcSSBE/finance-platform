@@ -35,23 +35,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Too many invoices in one batch." }, { status: 400 });
     }
 
-    const parsed = await Promise.all(pdfs.map((p) => parseAmazonInvoice(p.bytes, p.name)));
+    const parsed = await Promise.all(pdfs.map((p) => parseAmazonInvoice(p.bytes, p.name, p.path)));
     const invoices = parsed.filter((p) => !p.error);
     const unreadable = parsed.filter((p) => p.error);
 
-    // Deterministic per-currency totals across the readable invoices.
-    const totalsMap = new Map<string, { totalCents: number; count: number }>();
-    for (const inv of invoices) {
-      const b = totalsMap.get(inv.currency) ?? { totalCents: 0, count: 0 };
-      b.totalCents += inv.totalCents;
-      b.count += 1;
-      totalsMap.set(inv.currency, b);
-    }
-    const totalsByCurrency = [...totalsMap.entries()]
-      .map(([currency, v]) => ({ currency, totalCents: v.totalCents, count: v.count }))
-      .sort((a, b) => b.count - a.count);
-
-    const batch: AmazonBatchResult = { invoices, unreadable, totalsByCurrency };
+    // Deterministic per-currency totals. Payout statements (money in) are never added to the fee totals.
+    const totals = (list: AmazonInvoice[]) => {
+      const m = new Map<string, { totalCents: number; count: number }>();
+      for (const inv of list) {
+        const b = m.get(inv.currency) ?? { totalCents: 0, count: 0 };
+        b.totalCents += inv.totalCents;
+        b.count += 1;
+        m.set(inv.currency, b);
+      }
+      return [...m.entries()]
+        .map(([currency, v]) => ({ currency, totalCents: v.totalCents, count: v.count }))
+        .sort((a, b) => b.count - a.count);
+    };
+    const isPayout = (inv: AmazonInvoice) => inv.docType === "payment-statement";
+    const batch: AmazonBatchResult = {
+      invoices,
+      unreadable,
+      totalsByCurrency: totals(invoices.filter((i) => !isPayout(i))),
+      payoutTotalsByCurrency: totals(invoices.filter(isPayout)),
+    };
     return NextResponse.json({ batch, driveEnabled: isDriveEnabled() });
   } catch (err) {
     const message = err instanceof Error ? err.message : "We could not read those files.";

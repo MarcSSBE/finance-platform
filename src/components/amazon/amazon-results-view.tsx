@@ -46,6 +46,7 @@ export function AmazonResultsView({
   const t = useT();
   const primary = batch.totalsByCurrency[0];
   const others = batch.totalsByCurrency.slice(1);
+  const payouts = batch.payoutTotalsByCurrency ?? [];
 
   return (
     <div className="space-y-8">
@@ -63,8 +64,18 @@ export function AmazonResultsView({
               </span>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              {t.amazon.invoicesCounted(batch.invoices.length)}
+              {t.amazon.invoicesCounted(batch.invoices.filter((i) => i.docType !== "payment-statement").length)}
             </p>
+            {payouts.length > 0 && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t.amazon.payoutsCounted(payouts.reduce((n, c) => n + c.count, 0))}:{" "}
+                {payouts.map((c) => (
+                  <span key={c.currency} className="tabular font-mono tabular-nums">
+                    {c.currency} {formatCents(c.totalCents)}{" "}
+                  </span>
+                ))}
+              </p>
+            )}
           </div>
           {others.length > 0 && (
             <ul className="space-y-1 text-sm">
@@ -221,6 +232,7 @@ export function AmazonResultsView({
           {t.amazon.zipNote}
         </p>
         <p className="text-xs text-muted-foreground/80">{t.amazon.provisionalNote}</p>
+        <p className="text-xs text-muted-foreground/80">{t.amazon.payoutNote}</p>
       </div>
     </div>
   );
@@ -238,6 +250,8 @@ function docTypeLabel(d: AmazonDocType, t: Messages): string {
       return t.amazon.docCreditFba;
     case "epr-service-invoice":
       return t.amazon.docEpr;
+    case "payment-statement":
+      return t.amazon.docPayout;
     default:
       return t.amazon.docOther;
   }
