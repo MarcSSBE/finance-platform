@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     const received = pdfs.length;
 
     // 1) Parse every PDF (cheap: ~25ms each, no network).
-    const parsed = await Promise.all(pdfs.map((p) => parseAmazonInvoice(p.bytes, p.name)));
+    const parsed = await Promise.all(pdfs.map((p) => parseAmazonInvoice(p.bytes, p.name, p.path)));
 
     // 2) Files that could not be parsed are reported as errors, never silently
     //    dropped — a partial run must never look like a complete one.
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
     if (isSlackEnabled() && (uploaded > 0 || failed > 0)) {
       const period = results.find((r) => r.drivePath)?.drivePath.split("/")[1];
       notified = await postFilingNotification({
-        label: "Amazon fee invoices",
+        label: parsed.some((p) => p.docType === "payment-statement") ? "Amazon invoices and payout statements" : "Amazon fee invoices",
         uploaded,
         skipped,
         failed,

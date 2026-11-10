@@ -12,6 +12,8 @@ export const INVOICE_TYPE_LABELS: Record<AmazonDocType, string> = {
   "fba-credit-note": "Fulfillment VAT credit",
   "merchant-credit-note": "Merchant VAT credit",
   "epr-service-invoice": "EPR",
+  // Veronica 2026-11-10: payout statements named with country + payout amount.
+  "payment-statement": "Payout",
   other: "",
 };
 
@@ -36,7 +38,8 @@ export function buildAmazonName(inv: {
   // but the filename shows the magnitude; the "VAT credit" type word already
   // signals it is a credit (Veronica's spec: "Amazon FR Fulfillment VAT credit
   // EUR 405.38", not "-405.38").
-  const amount = formatCents(Math.abs(inv.totalCents));
+  // A payout is not a credit note: a negative payout (Amazon kept money) keeps its minus sign.
+  const amount = formatCents(inv.docType === "payment-statement" ? inv.totalCents : Math.abs(inv.totalCents));
   const country = inv.country || "Unknown";
   const typeLabel = INVOICE_TYPE_LABELS[inv.docType] ?? "";
   const parts = ["Amazon", country, typeLabel, inv.currency, amount].filter(Boolean);

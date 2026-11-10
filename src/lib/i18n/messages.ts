@@ -127,6 +127,10 @@ const en = {
     invoicesCounted: (n: number) => `${n} invoice${n !== 1 ? "s" : ""} read`,
     provisionalNote:
       "Filed as Amazon <Country> <Type> <CUR> <Total>, into the Amazon folder for the invoice month, under a per-country subfolder.",
+    payoutNote:
+      "Payout statements (Statement View) are filed as Amazon <Country> Payout <CUR> <Payout amount>, in the month of the transfer. The country comes from the folder, so upload the ZIP of the Amazon folder (with its DE, FR, ... folders).",
+    payoutsCounted: (n: number) => `${n} payout statement${n !== 1 ? "s" : ""}, not included in the invoice total`,
+    docPayout: "Payout",
     colInvoice: "Invoice",
     colCountry: "Country",
     colType: "Type",
@@ -391,6 +395,10 @@ const sv: Messages = {
     invoicesCounted: (n: number) => `${n} faktura${n !== 1 ? "or" : ""} lästa`,
     provisionalNote:
       "Arkiveras som Amazon <Land> <Typ> <CUR> <Summa>, i Amazon-mappen för fakturans månad, under en undermapp per land.",
+    payoutNote:
+      "Utbetalningsrapporter (Statement View) arkiveras som Amazon <Land> Payout <CUR> <Utbetalt belopp>, i månaden för överföringen. Landet tas från mappen, så ladda upp ZIP-filen av Amazon-mappen (med mapparna DE, FR, ...).",
+    payoutsCounted: (n: number) => `${n} utbetalningsrapport${n !== 1 ? "er" : ""}, ingår inte i fakturasumman`,
+    docPayout: "Utbetalning",
     colInvoice: "Faktura",
     colCountry: "Land",
     colType: "Typ",

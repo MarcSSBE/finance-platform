@@ -13,7 +13,11 @@ import { extractPdfText } from "@/lib/pdf"; // shared, project-agnostic PDF text
 import { parseAmazonDate, parseMoneyToCents } from "./dates";
 import { applyNaming } from "./naming";
 import { extractStructured, isAiEnabled } from "@/lib/ai/claude";
+import { classifyAndReadPayout, looksLikePayoutText } from "./payout";
 import type { AmazonDocType, AmazonInvoice } from "./types";
+
+/** Below this many characters the PDF has no usable text layer (e.g. "Microsoft: Print To PDF" payout statements). */
+const MIN_TEXT_CHARS = 40;
 
 /** Amazon invoice ids look like "SE-AEU-2026-33639" or "SE-CN-AEU-2026-7899". */
 const INVOICE_NUMBER_RE = /\b([A-Z]{2}-(?:CN-)?[A-Z]{2,4}-\d{4}-\d{3,})\b/;
@@ -99,9 +103,11 @@ function parseTotals(text: string): { currency: string; net: number; vat: number
   return { currency, net: cents[0], vat: 0, total: cents[0] };
 }
 
+/** path: where the PDF sat in the uploaded ZIP ("Amazon/DE/Statement View.pdf"); payouts take the country from it. */
 export async function parseAmazonInvoice(
   buffer: ArrayBuffer | Buffer,
   fileName: string,
+  path: string = fileName,
 ): Promise<AmazonInvoice> {
   const base: AmazonInvoice = {
     fileName,
@@ -122,9 +128,25 @@ export async function parseAmazonInvoice(
     needsReview: false,
   };
 
-  try {
-    const text = await extractPdfText(buffer);
+  // Payout statement or no text layer at all: one AI read decides what it is, and code checks the figures.
+  const viaPayoutReader = async (): Promise<AmazonInvoice | null> => {
+    if (!isAiEnabled()) return null;
+    const r = await classifyAndReadPayout(buffer, fileName, path, base);
+    if (r === "fee-invoice" || r === null) return aiExtractInvoice(buffer, fileName);
+    return r;
+  };
 
+  let text: string;
+  try {
+    text = await extractPdfText(buffer);
+  } catch {
+    return (await viaPayoutReader()) ?? { ...base, error: "Could not read this PDF." };
+  }
+  if (looksLikePayoutText(text) || text.replace(/\s+/g, "").length < MIN_TEXT_CHARS) {
+    return (await viaPayoutReader()) ?? { ...base, error: "Could not read this PDF (no text layer)." };
+  }
+
+  try {
     const invoiceNumber = text.match(INVOICE_NUMBER_RE)?.[1] ?? "";
     const { country, marketplace } = countryFromMarketplace(text);
     const docType = detectDocType(text);
