@@ -83,6 +83,45 @@ function periodFromName(fileName: string): [string, string] | null {
   return m ? [m[1], m[2]] : null;
 }
 
+/**
+ * Columns of the "StatementDetail" export (sheet "StatementDetail", 51 columns,
+ * Veronica 2026-11-10: "it contains more information"). Same rows as the
+ * statement, newest first, plus the card refund link ("Remarks"), the status
+ * and the amount in the currency the merchant charged.
+ */
+const DETAIL_COLUMNS = {
+  type: "transaction type",
+  description: "description",
+  currency: "currency",
+  in: "amount entered",
+  out: "out",
+  balance: "balance",
+  date: "transaction creation date",
+  remarks: "remarks",
+  status: "status",
+  chargedAmount: "transaction amount",
+  chargedCurrency: "transaction currency",
+} as const;
+
+/** Header row (within the first 20) whose cells include every name, and the column of each name. */
+function findHeader<K extends string>(
+  ws: ExcelJS.Worksheet,
+  names: Record<K, string>,
+): { row: number; col: Record<K, number> } | null {
+  for (let r = 1; r <= Math.min(ws.rowCount, 20); r++) {
+    const at: Record<string, number> = {};
+    ws.getRow(r).eachCell((cell, c) => {
+      const h = cellText(cell).toLowerCase().replace(/\s+/g, " ");
+      if (!(h in at)) at[h] = c;
+    });
+    const keys = Object.keys(names) as K[];
+    if (keys.every((k) => names[k] in at)) {
+      return { row: r, col: Object.fromEntries(keys.map((k) => [k, at[names[k]]])) as Record<K, number> };
+    }
+  }
+  return null;
+}
+
 export async function parseWorldFirstStatement(
   buffer: ArrayBuffer | Buffer,
   fileName = "",
@@ -91,7 +130,50 @@ export async function parseWorldFirstStatement(
   await wb.xlsx.load(buffer as ArrayBuffer);
 
   const lines: AmexLine[] = [];
+  const chain: { currency: string; inCents: number; outCents: number; balanceCents: number | null }[] = [];
+  let detail = false;
   for (const ws of wb.worksheets) {
+    const d = findHeader(ws, DETAIL_COLUMNS);
+    if (d) {
+      detail = true;
+      for (let r = d.row + 1; r <= ws.rowCount; r++) {
+        const row = ws.getRow(r);
+        const get = (k: keyof typeof DETAIL_COLUMNS) => cellText(row.getCell(d.col[k]));
+        const posted = toIso(get("date"));
+        if (!posted) continue;
+        const [first, ...rest] = get("description").split(/\r?\n/);
+        // A card refund's description is only its own reference number: no merchant.
+        const onlyRef = /^\d{12,}$/.test(first.trim());
+        const inCents = parseWfAmount(get("in"));
+        const outCents = parseWfAmount(get("out"));
+        const currency = get("currency").toUpperCase();
+        const line = toLine(
+          posted,
+          onlyRef ? "" : first,
+          onlyRef ? first.trim() : rest.join(" ").trim(),
+          inCents,
+          outCents,
+          currency,
+        );
+        if (!line) continue;
+        line.wf = {
+          type: get("type"),
+          linkRef: get("remarks"),
+          status: get("status"),
+          chargedCents: parseWfAmount(get("chargedAmount")),
+          chargedCurrency: get("chargedCurrency").toUpperCase(),
+          cardLast4: first.match(/\(\d*\*+(\d{4})\)/)?.[1] ?? "",
+        };
+        lines.push(line);
+        chain.push({
+          currency,
+          inCents: inCents ?? 0,
+          outCents: outCents ?? 0,
+          balanceCents: parseWfAmount(get("balance")),
+        });
+      }
+      continue;
+    }
     // Find the header row and its columns by name, not position.
     let headerRow = 0;
     const col: Record<string, number> = {};
@@ -126,7 +208,10 @@ export async function parseWorldFirstStatement(
     }
   }
 
-  return toStatement(lines, periodFromName(fileName), true);
+  if (!detail) return toStatement(lines, periodFromName(fileName), true);
+  // Rows are newest first; the balance chain runs oldest first.
+  const chainOk = lines.length > 0 && balanceChainBreaks([...chain].reverse()).length === 0;
+  return { ...toStatement(lines, periodFromName(fileName), chainOk), balanceChecked: true };
 }
 
 /** One statement row → a line; null when it moves no money. */

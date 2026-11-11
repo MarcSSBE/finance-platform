@@ -13,6 +13,11 @@
  * strong evidence, not proof (the statement does not say what the row is), so
  * the page shows them as money back next to the charges, never folded silently;
  * a refund with no such charge stays in its own group, never guessed into one.
+ *
+ * The "StatementDetail" .xlsx export (Veronica 2026-11-10) links each card
+ * refund to its card payment exactly (the refund's "Remarks" = the payment's),
+ * partial refunds included. Those links are used first and need no amount
+ * match; the amount pairing only covers refunds the file does not link.
  */
 import type { AmexLine, AmexStatement } from "@/lib/amex/types";
 
@@ -43,8 +48,12 @@ export interface TypeLine {
   currency: string;
   /** Money out is positive, money in negative (as on the statement lines). */
   cents: number;
-  /** For a refund printed without a merchant: the charge it was paired with. */
-  refundOf?: { dateISO: string; description: string };
+  /**
+   * For a refund printed without a merchant: the charge it reverses. how =
+   * "reference": linked by WorldFirst's own reference (StatementDetail export);
+   * "amount": paired on the exact same amount + currency.
+   */
+  refundOf?: { dateISO: string; description: string; how: "reference" | "amount" };
 }
 
 export interface CurrencyTotals {
@@ -71,6 +80,12 @@ export interface TypeBreakdown {
   rowCount: number;
   /** Every row agrees with the printed running balance / summary (see parseWorldFirstPdf). */
   checked: boolean;
+  /** The rows were checked against a balance at all (the PDF, the StatementDetail export); false = short export. */
+  verified: boolean;
+  /** StatementDetail export: refunds are linked to their charges, and Facebook can be checked against Meta. */
+  detail: boolean;
+  /** Refunds linked to their charge by WorldFirst's reference. */
+  linkedRefunds: number;
   groups: TypeGroup[];
 }
 
@@ -127,11 +142,12 @@ const isoMs = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
  * and at most 60 days earlier, closest first, each charge used once.
  * Returns refund line index -> charge line index.
  */
-export function pairBlankRefunds(lines: AmexLine[]): Map<number, number> {
-  const used = new Set<number>();
+export function pairBlankRefunds(lines: AmexLine[], linked: Map<number, number> = new Map()): Map<number, number> {
+  // Refunds already linked by reference, and the charges they reverse, are not paired again.
+  const used = new Set<number>(linked.values());
   const pairs = new Map<number, number>();
   lines.forEach((r, i) => {
-    if (r.description || r.originalCents >= 0) return;
+    if (r.description || r.originalCents >= 0 || linked.has(i)) return;
     let best = -1;
     let bestGap = Infinity;
     lines.forEach((c, j) => {
@@ -152,10 +168,31 @@ export function pairBlankRefunds(lines: AmexLine[]): Map<number, number> {
   return pairs;
 }
 
+/**
+ * Pure: StatementDetail export only. Card refund -> the card payment with the
+ * same reference ("Remarks"), same currency. A reference shared by two
+ * payments is ambiguous and links nothing. Returns refund index -> payment index.
+ */
+export function linkRefundsByReference(lines: AmexLine[]): Map<number, number> {
+  const payments = new Map<string, number[]>();
+  lines.forEach((l, j) => {
+    if (l.wf?.type === "Card payment" && l.wf.linkRef) payments.set(l.wf.linkRef, [...(payments.get(l.wf.linkRef) ?? []), j]);
+  });
+  const links = new Map<number, number>();
+  lines.forEach((r, i) => {
+    if (r.wf?.type !== "Card refund" || !r.wf.linkRef || r.originalCents >= 0) return;
+    const found = payments.get(r.wf.linkRef);
+    if (found?.length === 1 && lines[found[0]].originalCurrency === r.originalCurrency) links.set(i, found[0]);
+  });
+  return links;
+}
+
 /** Pure: the statement grouped by type, featured types first, then by category and money out. */
 export function breakdownByType(statement: AmexStatement): TypeBreakdown {
   const lines = statement.lines;
-  const pairs = pairBlankRefunds(lines);
+  const linked = linkRefundsByReference(lines);
+  const byAmount = pairBlankRefunds(lines, linked);
+  const pairs = new Map([...linked, ...byAmount]);
   const groups = new Map<string, TypeGroup>();
   const group = (t: { key: string; label: string; category: TypeCategory }) => {
     let g = groups.get(t.key);
@@ -176,7 +213,15 @@ export function breakdownByType(statement: AmexStatement): TypeBreakdown {
       description: l.description,
       currency: l.originalCurrency,
       cents: l.originalCents,
-      ...(charge ? { refundOf: { dateISO: charge.processDateISO, description: charge.description } } : {}),
+      ...(charge
+        ? {
+            refundOf: {
+              dateISO: charge.processDateISO,
+              description: charge.description,
+              how: linked.has(i) ? ("reference" as const) : ("amount" as const),
+            },
+          }
+        : {}),
     });
     let tot = g.totals.find((x) => x.currency === l.originalCurrency);
     if (!tot) {
@@ -210,6 +255,9 @@ export function breakdownByType(statement: AmexStatement): TypeBreakdown {
     periodEndISO: statement.periodEndISO,
     rowCount: lines.length,
     checked: statement.totalsMatch,
+    verified: Boolean(statement.fromPdf || statement.balanceChecked),
+    detail: lines.some((l) => l.wf),
+    linkedRefunds: linked.size,
     groups: sorted,
   };
 }

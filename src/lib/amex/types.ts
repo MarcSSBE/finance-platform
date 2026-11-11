@@ -45,6 +45,30 @@ export interface AmexLine {
    * when several statements are checked together (see combine.ts).
    */
   part?: number;
+  /** WorldFirst "StatementDetail" export only: the extra columns it carries. */
+  wf?: WorldFirstDetail;
+}
+
+/**
+ * Columns of the WorldFirst "StatementDetail" .xlsx export (Veronica 2026-11-10)
+ * that the PDF and the short export do not have.
+ */
+export interface WorldFirstDetail {
+  /** "Card payment", "Card refund", "Collection", "Transfer", ... */
+  type: string;
+  /**
+   * "Remarks". On a card refund it is the reference of the card payment it
+   * reverses (the payment carries the same value), so a refund printed without
+   * a merchant can be linked to its charge exactly.
+   */
+  linkRef: string;
+  /** "SUCCESS", "Refunded", "Partially refund", ... */
+  status: string;
+  /** The amount in the currency the merchant charged ("Transaction amount", e.g. SEK 2,094.00 for a EUR row). */
+  chargedCents: number | null;
+  chargedCurrency: string;
+  /** Last 4 digits of the WorldFirst card ("(52737559****9556)"), "" when none. */
+  cardLast4: string;
 }
 
 export interface AmexStatement {
@@ -70,6 +94,12 @@ export interface AmexStatement {
   account?: string;
   /** WorldFirst statement PDF (one currency or the multi-currency one), not the .xlsx export. */
   fromPdf?: boolean;
+  /**
+   * WorldFirst "StatementDetail" export: every row was checked against its
+   * Balance column (totalsMatch holds the result). The short export has no
+   * check, so this stays unset for it.
+   */
+  balanceChecked?: boolean;
   /** Last 5 digits as printed ("Kortnummer som slutar på"). */
   cardEnding: string;
   lines: AmexLine[];
