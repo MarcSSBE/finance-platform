@@ -287,10 +287,45 @@ const en = {
     none: "None this period",
     noText: "(no text on the statement)",
     refundOf: (date: string, desc: string) => `money back, same amount as the charge on ${date} (${desc})`,
+    refundLinked: (date: string, desc: string) =>
+      `money back on the charge on ${date} (${desc}), linked by WorldFirst's own reference`,
+    linkedNote: (n: number) =>
+      `${n} refund${n > 1 ? "s are" : " is"} linked to ${n > 1 ? "their charges" : "its charge"} by WorldFirst's own reference, so each one sits under the right type.`,
     copy: "Copy table for Excel",
     copied: "Table copied",
     copyFailed: "Could not copy, select the table instead.",
     another: "Another statement",
+    metaTitle: "Facebook ads: check against Meta's billing report",
+    metaDesc:
+      "Upload Meta's billing report (PDF) for the same month. Each Meta row is matched to the WorldFirst Facebook charge it belongs to, and what is left open is listed.",
+    metaNeedsDetail:
+      "To check Facebook ads against Meta's billing report, upload the WorldFirst .xlsx export (the one with many columns). Only it links refunds to their charges and shows the SEK amount.",
+    metaChoose: "Choose Meta's billing report",
+    metaReading: (name: string) => `Reading ${name}…`,
+    metaTotalsOk: (total: string) => `Every Meta row was read: they add up to the total Meta prints (${total}).`,
+    metaTotalsBad: "Meta's rows do not add up to the total Meta prints. Do not rely on this check; send the file to Marc.",
+    statementBad: "The WorldFirst export does not match its own Balance column. Do not rely on this check; send the file to Marc.",
+    metaSummary: (matched: number, total: number, cards: string, sum: string) =>
+      `${matched} of ${total} Meta rows paid with card ${cards} match a WorldFirst Facebook charge (Meta ${sum}).`,
+    metaNothingOpen: "Nothing is open on the WorldFirst card.",
+    metaEstimatedNote:
+      "WorldFirst shows refunds only in EUR, so the SEK kept after a partial refund is worked out from the EUR amounts. That can be off by up to one euro cent (about SEK 0.12); the small differences come from that.",
+    tinyRefund: "refund under one euro cent, which WorldFirst does not show",
+    openOtherPayment: "Meta rows paid another way (not on WorldFirst)",
+    openWithoutCharge: "Meta rows on the WorldFirst card with no WorldFirst charge",
+    openChargesWithoutMeta: "WorldFirst Facebook charges with no Meta row",
+    openRefundPending: "WorldFirst charges whose refund is not in this statement (Meta lists them once refunded)",
+    openFullyRefunded: "WorldFirst charges refunded in full (Meta does not list them)",
+    openOtherCurrency: "WorldFirst charges in another currency than Meta's report",
+    showMatched: (n: number) => `Show the ${n} matched rows`,
+    hideMatched: "Hide the matched rows",
+    colCharge: "WorldFirst charge",
+    colCharged: "Charged",
+    colRefunded: "Refunded",
+    colKept: "Kept",
+    colMeta: "Meta row",
+    colDiff: "Difference",
+    metaAnother: "Another Meta report",
   },
 };
 
@@ -573,10 +608,45 @@ const sv: Messages = {
     none: "Inga denna period",
     noText: "(ingen text på kontoutdraget)",
     refundOf: (date: string, desc: string) => `pengar tillbaka, samma belopp som dragningen ${date} (${desc})`,
+    refundLinked: (date: string, desc: string) =>
+      `pengar tillbaka på dragningen ${date} (${desc}), kopplad med WorldFirsts egen referens`,
+    linkedNote: (n: number) =>
+      `${n} ${n > 1 ? "återbetalningar är kopplade till sina dragningar" : "återbetalning är kopplad till sin dragning"} med WorldFirsts egen referens, så ${n > 1 ? "var och en hamnar" : "den hamnar"} under rätt typ.`,
     copy: "Kopiera tabellen till Excel",
     copied: "Tabellen kopierad",
     copyFailed: "Kunde inte kopiera, markera tabellen i stället.",
     another: "Ett annat kontoutdrag",
+    metaTitle: "Facebook-annonser: kontroll mot Metas faktureringsrapport",
+    metaDesc:
+      "Ladda upp Metas faktureringsrapport (PDF) för samma månad. Varje rad hos Meta matchas mot WorldFirst-dragningen den hör till, och det som är öppet listas.",
+    metaNeedsDetail:
+      "För att kontrollera Facebook-annonser mot Metas faktureringsrapport, ladda upp WorldFirst-exporten i .xlsx (den med många kolumner). Bara den kopplar återbetalningar till sina dragningar och visar beloppet i SEK.",
+    metaChoose: "Välj Metas faktureringsrapport",
+    metaReading: (name: string) => `Läser ${name}…`,
+    metaTotalsOk: (total: string) => `Alla rader hos Meta lästes: de blir summan som Meta skriver ut (${total}).`,
+    metaTotalsBad: "Raderna hos Meta blir inte summan som Meta skriver ut. Lita inte på kontrollen; skicka filen till Marc.",
+    statementBad: "WorldFirst-exporten stämmer inte med sin egen saldokolumn. Lita inte på kontrollen; skicka filen till Marc.",
+    metaSummary: (matched: number, total: number, cards: string, sum: string) =>
+      `${matched} av ${total} rader hos Meta betalda med kort ${cards} matchar en Facebook-dragning på WorldFirst (Meta ${sum}).`,
+    metaNothingOpen: "Inget är öppet på WorldFirst-kortet.",
+    metaEstimatedNote:
+      "WorldFirst visar återbetalningar bara i EUR, så det som är kvar i SEK efter en delvis återbetalning räknas fram från EUR-beloppen. Det kan skilja upp till en euro-cent (cirka 0,12 SEK); de små skillnaderna kommer därifrån.",
+    tinyRefund: "återbetalning under en euro-cent, som WorldFirst inte visar",
+    openOtherPayment: "Rader hos Meta betalda på annat sätt (inte på WorldFirst)",
+    openWithoutCharge: "Rader hos Meta på WorldFirst-kortet utan dragning på WorldFirst",
+    openChargesWithoutMeta: "Facebook-dragningar på WorldFirst utan rad hos Meta",
+    openRefundPending: "Dragningar på WorldFirst vars återbetalning inte finns i detta kontoutdrag (Meta listar dem efter återbetalningen)",
+    openFullyRefunded: "Dragningar på WorldFirst som återbetalats helt (Meta listar dem inte)",
+    openOtherCurrency: "Dragningar på WorldFirst i en annan valuta än Metas rapport",
+    showMatched: (n: number) => `Visa de ${n} matchade raderna`,
+    hideMatched: "Dölj de matchade raderna",
+    colCharge: "Dragning på WorldFirst",
+    colCharged: "Dragit",
+    colRefunded: "Återbetalt",
+    colKept: "Kvar",
+    colMeta: "Rad hos Meta",
+    colDiff: "Skillnad",
+    metaAnother: "En annan rapport från Meta",
   },
 };
 

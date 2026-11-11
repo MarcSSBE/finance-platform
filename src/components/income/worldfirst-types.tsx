@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useLang, useT } from "@/components/i18n/language-provider";
 import { formatMoney } from "@/lib/income/money";
 import type { TypeBreakdown, TypeGroup } from "@/lib/worldfirst/by-type";
+import { MetaCheck } from "./meta-check";
 
 type Status = "idle" | "reading" | "done" | "error";
 
@@ -19,11 +20,13 @@ export function WorldFirstTypes() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [fileName, setFileName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [data, setData] = useState<{ breakdown: TypeBreakdown; fromPdf: boolean } | null>(null);
   const [error, setError] = useState("");
 
   async function read(file: File) {
     setFileName(file.name);
+    setFile(file);
     setStatus("reading");
     setError("");
     setData(null);
@@ -97,13 +100,16 @@ export function WorldFirstTypes() {
           {w.reading(fileName)}
         </div>
       ) : data ? (
-        <Results
-          b={data.breakdown}
-          fromPdf={data.fromPdf}
-          fileName={fileName}
-          onCopy={() => void copyTable(data.breakdown)}
-          onAnother={() => inputRef.current?.click()}
-        />
+        <>
+          <Results
+            b={data.breakdown}
+            fileName={fileName}
+            onCopy={() => void copyTable(data.breakdown)}
+            onAnother={() => inputRef.current?.click()}
+          />
+          {/* key: a new statement starts the Meta check over */}
+          <MetaCheck key={fileName} statement={file} detail={data.breakdown.detail} />
+        </>
       ) : null}
     </section>
   );
@@ -111,13 +117,11 @@ export function WorldFirstTypes() {
 
 function Results({
   b,
-  fromPdf,
   fileName,
   onCopy,
   onAnother,
 }: {
   b: TypeBreakdown;
-  fromPdf: boolean;
   fileName: string;
   onCopy: () => void;
   onAnother: () => void;
@@ -133,7 +137,7 @@ function Results({
           {b.periodStartISO} – {b.periodEndISO} · {w.rowsRead(b.rowCount)}
         </span>
       </div>
-      {!fromPdf ? (
+      {!b.verified ? (
         <p className="text-sm text-muted-foreground">{w.fromExport}</p>
       ) : b.checked ? (
         <p className="flex items-center gap-2 text-sm text-status-ok">
@@ -146,6 +150,7 @@ function Results({
           {w.checkedBad}
         </p>
       )}
+      {b.linkedRefunds > 0 && <p className="text-sm text-muted-foreground">{w.linkedNote(b.linkedRefunds)}</p>}
       {unmatched && <p className="text-sm text-muted-foreground">{w.unmatchedNote(unmatched.lines.length)}</p>}
 
       <Table>
@@ -216,7 +221,10 @@ function GroupRow({ g }: { g: TypeGroup }) {
         g.lines.map((l, i) => (
           <TableRow key={i} className="text-xs text-muted-foreground">
             <TableCell className="whitespace-normal break-words pl-6">
-              {l.dateISO} · {l.refundOf ? w.refundOf(l.refundOf.dateISO, l.refundOf.description) : l.description || w.noText}
+              {l.dateISO} ·{" "}
+              {l.refundOf
+                ? (l.refundOf.how === "reference" ? w.refundLinked : w.refundOf)(l.refundOf.dateISO, l.refundOf.description)
+                : l.description || w.noText}
             </TableCell>
             <TableCell className="text-right tabular-nums">{l.cents > 0 ? formatMoney(l.cents, l.currency) : ""}</TableCell>
             <TableCell className="text-right tabular-nums">{l.cents < 0 ? formatMoney(-l.cents, l.currency) : ""}</TableCell>

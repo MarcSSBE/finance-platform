@@ -59,6 +59,35 @@ const [a, b] = [outs(sb), outs(xl)];
 const diffs = [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k));
 check("Sep PDF = Sep export for all 44 shared money-out types (only diff: CAD conversion)", diffs.length === 1 && diffs[0] === "conversion:cad -> usd|CAD" && a.size === 45);
 
+// Oct StatementDetail export (Veronica 2026-11-10, worldfirst-detail-2026-10.xlsx). Expected figures from
+// Python/openpyxl on 2026-11-11 (each refund's "Remarks" looked up among the card payments), not from this code.
+const det = await parseWorldFirstStatement(readFileSync(`${DIR}/worldfirst-detail-2026-10.xlsx`), "2125170000074573_2026-10-01_2026-10-31 (2).xlsx");
+const db = breakdownByType(det);
+check("Oct detail: 194 rows, every row matches its Balance column", det.lines.length === 194 && det.totalsMatch && det.balanceChecked === true);
+check("Oct detail: verified + detail flags (PDF: verified, no detail)", db.verified && db.detail && !ob.detail && ob.verified);
+check("Oct detail: all 32 refunds linked by reference, none left unmatched", db.linkedRefunds === 32 && !db.groups.some((g) => g.category === "refund-unmatched"));
+check("Oct detail Facebook ads: EUR 7,768.58 out, EUR 3,913.38 back (29 refunds), SEK 226.40 out",
+  total(db, "facebook-ads", "EUR")?.outCents === 776858 && total(db, "facebook-ads", "EUR")?.inCents === 391338 &&
+  db.groups.find((g) => g.key === "facebook-ads")!.lines.filter((l) => l.refundOf?.how === "reference").length === 29 &&
+  total(db, "facebook-ads", "SEK")?.outCents === 22640);
+check("Oct detail: the other 3 refunds sit under OpenAI USD 50.00, SP Sleeve Stars USD 17.06, Pattern USD 1,618.00",
+  total(db, "card:openai san francisco usa", "USD")?.inCents === 5000 &&
+  total(db, "card:sp sleeve stars estero usa", "USD")?.inCents === 1706 &&
+  total(db, "card:pattern inc lehi usa", "USD")?.inCents === 161800);
+check("Oct detail EUR 173.80 (27 Oct) = money back on FACEBK *FLE28D2MG4 of 26 Oct", db.groups.find((g) => g.key === "facebook-ads")!.lines.some(
+  (l) => l.cents === -17380 && l.dateISO === "2026-10-27" && l.refundOf?.dateISO === "2026-10-26" && l.refundOf.description.startsWith("FACEBK *FLE28D2MG4")));
+// Money out per type and currency (refund rows differ by design: the PDF pairs 10 by amount, the export links all 32).
+// Keys without spaces: the PDF wraps "Belastingdienst,Apeldoorn,the Netherlands" where the export has "theNetherlands".
+const outOnly = (x: typeof ob) => new Map(x.groups.flatMap((g) => g.totals.filter((t) => t.outCents).map((t) => [`${g.key}|${t.currency}`.replace(/\s+/g, ""), t.outCents] as const)));
+const [po, dout] = [outOnly(ob), outOnly(db)];
+const outDiffs = [...new Set([...po.keys(), ...dout.keys()])].filter((k) => po.get(k) !== dout.get(k));
+check(`Oct PDF = Oct detail export: money out of all ${po.size} types identical`, outDiffs.length === 0 && po.size === dout.size && po.size > 40);
+check("Oct detail Google Ads USD 15,000.00 (15) and TikTok Ads USD 15,062.72 (4)",
+  total(db, "google-ads", "USD")?.outCents === 1500000 && total(db, "google-ads", "USD")?.count === 15 &&
+  total(db, "tiktok-ads", "USD")?.outCents === 1506272 && total(db, "tiktok-ads", "USD")?.count === 4);
+check("short export: not verified, no detail, no links", !xl.verified && !xl.detail && xl.linkedRefunds === 0);
+check("PDF refunds still paired by amount (10)", ob.groups.flatMap((g) => g.lines).filter((l) => l.refundOf?.how === "amount").length === 10);
+
 // Pure pieces.
 check("chain: a tampered amount breaks it", balanceChainBreaks([
   { currency: "USD", inCents: 0, outCents: 100, balanceCents: 900 },
